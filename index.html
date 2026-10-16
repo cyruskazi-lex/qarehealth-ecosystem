@@ -4,264 +4,116 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Qäre Health</title>
-<meta name="description" content="A sovereign health information exchange. Twelve persona products on one spine, with verified health impact that connects to capital." />
+<meta name="description" content="Twelve connected health apps on one exchange. Every institution collects impact and, with consent, publishes it verified to the Global Impact Commons to raise capital." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=DM+Serif+Display&family=Comfortaa:wght@600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="assets/tokens.css" />
+<link rel="stylesheet" href="assets/qare.css" />
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-  body {
-    font-family: var(--font-ui);
-    color: var(--ink);
-    background: var(--page);
-    line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
-  }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
-  a { color: inherit; text-decoration: none; }
-  .mono { font-family: var(--font-mono); }
-
-  /* Nav */
-  header.nav {
-    position: sticky; top: 0; z-index: 50;
-    background: rgba(253,253,252,0.88); backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--hairline);
-  }
-  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-  .wordmark { font-family: var(--font-wordmark); font-size: 26px; letter-spacing: -0.01em; }
-  .wordmark .dot { color: var(--brass); }
-  .nav-links { display: flex; gap: 28px; align-items: center; }
-  .nav-links a { color: var(--mid); font-size: 14px; font-weight: 500; }
-  .nav-links a:hover { color: var(--ink); }
-  .btn {
-    font-family: var(--font-ui); font-size: 14px; font-weight: 600;
-    border-radius: var(--control-radius); padding: 10px 20px; cursor: pointer;
-    border: 1px solid transparent; transition: all .15s ease;
-  }
-  .btn-primary { background: var(--chrome); color: #fff; }
-  .btn-primary:hover { background: #2a221c; }
-  .btn-ghost { background: transparent; border-color: var(--border); color: var(--ink); }
-  .btn-ghost:hover { background: var(--surface-alt); }
-  @media (max-width: 760px) { .nav-links a:not(.btn) { display: none; } }
-
-  /* Hero */
-  .hero { padding: 88px 0 64px; }
-  .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--petrol-dark); margin-bottom: 20px; }
-  .hero h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(38px, 6vw, 66px); line-height: 1.04; letter-spacing: -0.015em; max-width: 14ch; }
-  .hero p.lede { font-size: clamp(17px, 2vw, 20px); color: var(--mid); max-width: 56ch; margin-top: 24px; }
-  .hero .cta { display: flex; gap: 12px; margin-top: 36px; flex-wrap: wrap; }
-
-  /* Spine diagram */
-  .spine { margin-top: 64px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 28px; }
-  .spine .cap { font-family: var(--font-mono); font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 18px; }
-  .flow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .flow .node { flex: 1 1 140px; min-width: 120px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
-  .flow .node .n-k { font-family: var(--font-mono); font-size: 11px; color: var(--petrol-dark); text-transform: uppercase; letter-spacing: 0.08em; }
-  .flow .node .n-v { font-size: 14px; font-weight: 600; margin-top: 4px; }
-  .flow .arrow { color: var(--brass); font-size: 20px; font-weight: 700; }
-  @media (max-width: 760px) { .flow .arrow { display: none; } }
-
-  /* Section shell */
-  section.band { padding: 72px 0; border-top: 1px solid var(--hairline); }
-  .section-head { max-width: 62ch; margin-bottom: 40px; }
-  .section-head h2 { font-family: var(--font-display); font-weight: 400; font-size: clamp(28px, 4vw, 40px); letter-spacing: -0.01em; line-height: 1.1; }
-  .section-head p { color: var(--mid); margin-top: 14px; font-size: 17px; }
-
-  /* Clusters / product grid */
-  .cluster { margin-bottom: 44px; }
-  .cluster-label { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--petrol-dark); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--hairline); }
-  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-  @media (max-width: 980px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  main { padding: 48px 0 80px; }
+  .hero h1 { font-family: var(--font-brand); font-weight: 800; font-size: clamp(32px, 5.4vw, 56px); line-height: 1.05; letter-spacing: -0.015em; max-width: 16ch; }
+  .hero p { color: var(--mid); font-size: clamp(16px, 2vw, 19px); max-width: 60ch; margin-top: 18px; }
+  .demo { background: var(--chrome); color: #fff; border-radius: var(--card-radius); padding: 26px; margin-top: 36px; }
+  .demo h2 { font-family: var(--font-brand); font-weight: 700; font-size: 18px; }
+  .demo p { color: #cfc9db; font-size: 14px; margin-top: 6px; max-width: 64ch; }
+  .demo .steps { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .demo .chipbtn { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; padding: 9px 15px; font-size: 13px; font-weight: 600; color: #fff; }
+  .demo .chipbtn .n { font-family: var(--font-mono); font-size: 11px; color: var(--iris-bright); }
+  .demo .note { color: #9a94ad; font-family: var(--font-mono); font-size: 11px; margin-top: 14px; }
+  .cluster { margin-top: 40px; }
+  .cluster-label { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--iris); padding-bottom: 8px; border-bottom: 1px solid var(--hairline); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
-  .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--card-radius); padding: 20px; transition: all .15s ease; }
-  .card:hover { box-shadow: var(--card-shadow); border-color: var(--border); transform: translateY(-1px); }
-  .card .p-name { font-size: 17px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; }
-  .card .p-persona { font-family: var(--font-mono); font-size: 11px; color: var(--petrol-dark); text-transform: uppercase; letter-spacing: 0.06em; }
-  .card .p-desc { color: var(--mid); font-size: 14px; margin-top: 8px; }
-  .card .p-status { margin-top: 14px; font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
-  .dot-chip { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--brass); margin-right: 6px; vertical-align: middle; }
-
-  /* Impact / tokenization band */
-  .band.impact { background: var(--surface-alt); }
-  .impact-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: center; }
-  @media (max-width: 860px) { .impact-grid { grid-template-columns: 1fr; gap: 32px; } }
-  .impact-steps { display: flex; flex-direction: column; gap: 14px; }
-  .step { display: flex; gap: 16px; align-items: flex-start; background: var(--surface); border: 1px solid var(--hairline); border-radius: 14px; padding: 16px 18px; }
-  .step .num { font-family: var(--font-mono); font-weight: 500; color: #fff; background: var(--chrome); border-radius: 50%; width: 28px; height: 28px; display: grid; place-items: center; font-size: 13px; flex: 0 0 auto; }
-  .step .s-t { font-weight: 600; font-size: 15px; }
-  .step .s-d { color: var(--mid); font-size: 13px; margin-top: 3px; }
-  .step.accent .num { background: var(--brass); }
-
-  /* Principles */
-  .principles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-  @media (max-width: 720px) { .principles { grid-template-columns: 1fr; } }
-  .principle { border-left: 2px solid var(--brass); padding-left: 18px; }
-  .principle h3 { font-size: 16px; font-weight: 700; }
-  .principle p { color: var(--mid); font-size: 14px; margin-top: 6px; }
-
-  /* IRIS strip */
-  .iris { background: var(--chrome); color: #fff; border-radius: var(--card-radius); padding: 40px; display: flex; gap: 28px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-  .iris .mark { width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--brass-light), var(--brass) 70%); flex: 0 0 auto; }
-  .iris h2 { font-family: var(--font-display); font-weight: 400; font-size: 28px; }
-  .iris p { color: #cfc8c1; font-size: 15px; margin-top: 8px; max-width: 54ch; }
-
-  /* Footer */
-  footer { border-top: 1px solid var(--hairline); padding: 40px 0 56px; color: var(--mid); font-size: 13px; }
-  footer .f-top { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
+  .p { display: block; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--card-radius); padding: 18px; transition: all .15s ease; }
+  .p.live:hover { box-shadow: var(--card-shadow); transform: translateY(-1px); border-color: var(--iris-line); }
+  .p.soon { opacity: 0.72; }
+  .p .pn { font-family: var(--font-brand); font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: space-between; }
+  .p .per { font-family: var(--font-mono); font-size: 11px; color: var(--iris); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+  .p .pd { font-size: 13px; color: var(--mid); margin-top: 8px; }
+  .tag { font-family: var(--font-mono); font-size: 10px; border-radius: 999px; padding: 3px 9px; }
+  .tag.live { background: var(--verified-tint); color: var(--verified); }
+  .tag.soon { background: var(--unmeasured-tint); color: var(--mid); }
+  .wordmark-xl { font-family: var(--font-brand); font-weight: 800; font-size: 26px; }
+  .wordmark-xl .dot { color: var(--iris-bright); }
+  footer { border-top: 1px solid var(--hairline); margin-top: 56px; padding: 30px 0 50px; }
   footer .mono { color: var(--faint); font-size: 12px; }
+  .topline { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
+  .topline .right { display: flex; gap: 10px; align-items: center; }
 </style>
 </head>
 <body>
-
-<header class="nav">
-  <div class="wrap nav-inner">
-    <div class="wordmark">Qäre<span class="dot">·</span>Health</div>
-    <nav class="nav-links">
-      <a href="#products">Products</a>
-      <a href="#impact">Health impact</a>
-      <a href="#trust">Trust</a>
-      <a href="#iris">IRIS</a>
-      <a class="btn btn-primary" href="#products">See the demo</a>
-    </nav>
+<div class="wrap topline">
+  <div class="wordmark-xl">Qäre<span class="dot">·</span>Health</div>
+  <div class="right">
+    <button class="btn btn-ghost btn-sm" id="reset">Reset demo</button>
+    <a class="btn btn-ghost btn-sm" href="https://claude.ai/artifact/2qLBV7z36uALqjeJPXxNG9" target="_blank" rel="noopener">Global Impact Commons</a>
   </div>
-</header>
+</div>
 
 <main>
-  <section class="hero">
-    <div class="wrap">
-      <div class="eyebrow">A Lexington Advisory Group company</div>
-      <h1>The health system, connected on one exchange you own.</h1>
-      <p class="lede">Qäre Health is a sovereign health information exchange. Doctors, pharmacies, labs, hospitals, ministries and manufacturers work on twelve connected products that share one record. The data stays owned by the people and institutions who create it, and the verified health impact it produces can be measured, signed, and connected to capital.</p>
-      <div class="cta">
-        <a class="btn btn-primary" href="#products">Explore the twelve products</a>
-        <a class="btn btn-ghost" href="#impact">How health impact scales capital</a>
-      </div>
+  <div class="wrap hero">
+    <div class="eyebrow">A Lexington Advisory Group company</div>
+    <h1>Twelve health apps. One record underneath.</h1>
+    <p>Qäre Health connects doctors, pharmacies, labs, hospitals, ministries and manufacturers on one exchange. Write a prescription in one app and it appears in the others at once. Every institution measures its health impact, and with consent publishes it verified and traceable to the Global Impact Commons, where it can raise capital. Nothing is unverified or untraceable.</p>
 
-      <div class="spine">
-        <div class="cap">One spine, twelve nodes</div>
-        <div class="flow">
-          <div class="node"><div class="n-k">Entities</div><div class="n-v">Clinics, pharmacies, labs, hospitals, manufacturers</div></div>
-          <div class="arrow">&rarr;</div>
-          <div class="node"><div class="n-k">The exchange</div><div class="n-v">One shared record on Telos</div></div>
-          <div class="arrow">&rarr;</div>
-          <div class="node"><div class="n-k">Measure</div><div class="n-v">EESG Health Impact framework</div></div>
-          <div class="arrow">&rarr;</div>
-          <div class="node"><div class="n-k">Verify</div><div class="n-v">Signed outcomes on the Global Impact Commons</div></div>
-          <div class="arrow">&rarr;</div>
-          <div class="node"><div class="n-k">Capital</div><div class="n-v">Tokenised impact, institutional funding</div></div>
-        </div>
+    <div class="demo">
+      <h2>See the interconnection, live</h2>
+      <p>Open these four in separate browser tabs. In Pulse, prescribe CardiNex-10 for Amara. Watch it appear in Cura as a dispensing task, then dispense it and watch demand land in Nexus and the record update in Nova. The exchange is shared across your tabs.</p>
+      <div class="steps">
+        <a class="chipbtn" href="products/pulse/" target="_blank" rel="noopener"><span class="n">1</span> Pulse · doctor</a>
+        <a class="chipbtn" href="products/cura/" target="_blank" rel="noopener"><span class="n">2</span> Cura · pharmacy</a>
+        <a class="chipbtn" href="products/nexus/" target="_blank" rel="noopener"><span class="n">3</span> Nexus · pharma</a>
+        <a class="chipbtn" href="products/nova/" target="_blank" rel="noopener"><span class="n">4</span> Nova · patient</a>
+      </div>
+      <div class="note">cross-tab sync needs a served origin (GitHub Pages or any static server), not a file:// path</div>
+    </div>
+
+    <div class="cluster">
+      <div class="cluster-label">Care and clinical</div>
+      <div class="grid">
+        <a class="p live" href="products/pulse/"><div class="pn">Pulse <span class="tag live">live</span></div><div class="per">Clinician · small clinic</div><div class="pd">Prescribe against the record in seconds, with IRIS grounded in it.</div></a>
+        <a class="p live" href="products/cura/"><div class="pn">Cura <span class="tag live">live</span></div><div class="per">Pharmacist · small pharmacy</div><div class="pd">Dispensing tasks arrive from Pulse the moment a script is written.</div></a>
+        <a class="p live" href="products/nova/"><div class="pn">Nova <span class="tag live">live</span></div><div class="per">Patient · owns the record</div><div class="pd">See your meds update live, and control who sees your data.</div></a>
+        <div class="p soon"><div class="pn">Bridge <span class="tag soon">next</span></div><div class="per">Community health worker</div><div class="pd">Offline field visits, screening and referral on low-end hardware.</div></div>
       </div>
     </div>
-  </section>
 
-  <section class="band" id="products">
-    <div class="wrap">
-      <div class="section-head">
-        <h2>Twelve products. One record underneath.</h2>
-        <p>Each product is a front door for one kind of user. They are separate apps with separate jobs, but they read and write the same exchange, so a prescription written in one is a dispensing event in another and an impact signal in a third.</p>
-      </div>
-
-      <div class="cluster">
-        <div class="cluster-label">Care and clinical</div>
-        <div class="grid">
-          <div class="card"><div class="p-name">Nova <span class="p-persona">Patient</span></div><div class="p-desc">The personal health record and wallet. Consent lives here; the patient grants and revokes access.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-          <div class="card"><div class="p-name">Pulse <span class="p-persona">Clinician</span></div><div class="p-desc">E-prescribing and the patient record in under thirty seconds, with IRIS risk flags grounded in the record.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-          <div class="card"><div class="p-name">Cura <span class="p-persona">Pharmacist</span></div><div class="p-desc">Dispensing, serialised pack reconciliation, and substitution against the live formulary.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-          <div class="card"><div class="p-name">Bridge <span class="p-persona">Community health worker</span></div><div class="p-desc">Field visits, referrals and screening on low-end hardware, offline-first.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-        </div>
-      </div>
-
-      <div class="cluster">
-        <div class="cluster-label">Facilities and industry</div>
-        <div class="grid">
-          <div class="card"><div class="p-name">Apex <span class="p-persona">Hospital ops</span></div><div class="p-desc">Admissions, beds, theatre and the clinical and financial record of a facility.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-          <div class="card"><div class="p-name">Prism <span class="p-persona">Labs</span></div><div class="p-desc">Orders in, results out, quality control and turnaround against the exchange.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-          <div class="card"><div class="p-name">Nexus <span class="p-persona">Pharma ops</span></div><div class="p-desc">The pharmaceutical operating system: supply, quality, safety, regulatory and live demand. Most built.</div><div class="p-status"><span class="dot-chip"></span>Spec deepest</div></div>
-          <div class="card"><div class="p-name">Relay <span class="p-persona">Supply and 3PL</span></div><div class="p-desc">Serialised movement, cold chain and reconciliation from plant to shelf.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-        </div>
-      </div>
-
-      <div class="cluster">
-        <div class="cluster-label">System and oversight</div>
-        <div class="grid">
-          <div class="card"><div class="p-name">Zenith <span class="p-persona">Ministry</span></div><div class="p-desc">De-identified population view: disease signal, coverage, stockouts and the national impact picture.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-          <div class="card"><div class="p-name">Core <span class="p-persona">HIE operator</span></div><div class="p-desc">The operations console: node health, data flows, consent events and adapter status.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-          <div class="card"><div class="p-name">Shield <span class="p-persona">Insurer and payer</span></div><div class="p-desc">Adjudication, claims and risk against a shared, verifiable record.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-          <div class="card"><div class="p-name">Lumen <span class="p-persona">Research</span></div><div class="p-desc">Consented, anonymised cohorts and study support drawn from the Impact Commons.</div><div class="p-status"><span class="dot-chip"></span>Prototype next</div></div>
-        </div>
+    <div class="cluster">
+      <div class="cluster-label">Facilities and industry</div>
+      <div class="grid">
+        <a class="p live" href="products/nexus/"><div class="pn">Nexus <span class="tag live">live</span></div><div class="per">Pharma ops · large maker</div><div class="pd">Live demand from dispensing, cold chain, impact and capital.</div></a>
+        <div class="p soon"><div class="pn">Apex <span class="tag soon">next</span></div><div class="per">Hospital ops · mid size</div><div class="pd">Admissions, beds and the facility record on the exchange.</div></div>
+        <div class="p soon"><div class="pn">Prism <span class="tag soon">next</span></div><div class="per">Labs · mid size</div><div class="pd">Orders in, results out, closing the loop to Pulse and Nova.</div></div>
+        <div class="p soon"><div class="pn">Relay <span class="tag soon">next</span></div><div class="per">Supply and 3PL</div><div class="pd">Serialised movement and cold chain from plant to shelf.</div></div>
       </div>
     </div>
-  </section>
 
-  <section class="band impact" id="impact">
-    <div class="wrap">
-      <div class="section-head">
-        <h2>Health impact, measured and tokenised.</h2>
-        <p>This is how the ecosystem scales. The same records that run care also produce a signed, auditable measure of health impact. Verified impact becomes an asset institutional capital can fund, the way Helios does it for energy and Stratum for mining.</p>
-      </div>
-      <div class="impact-grid">
-        <div class="impact-steps">
-          <div class="step"><div class="num">1</div><div><div class="s-t">Lexington sets the framework</div><div class="s-d">An EESG Health Impact assessment defines the benchmarks a health entity must meet before any system is deployed.</div></div></div>
-          <div class="step"><div class="num">2</div><div><div class="s-t">Qäre measures against it</div><div class="s-d">The Health Impact Analysis reads live records, not surveys, and scores each entity continuously on the framework.</div></div></div>
-          <div class="step"><div class="num">3</div><div><div class="s-t">Independent verifiers sign</div><div class="s-d">Evidence routes to independent verifiers. The result is a signed Verified Health Outcome Statement, hash-chained and tamper-evident.</div></div></div>
-          <div class="step accent"><div class="num">4</div><div><div class="s-t">Impact is tokenised on the Commons</div><div class="s-d">Signed outcomes publish to the Global Impact Commons as impact tokens, anonymised and competitor-blind.</div></div></div>
-          <div class="step accent"><div class="num">5</div><div><div class="s-t">Capital connects</div><div class="s-d">DFIs, impact funds and donors fund verified outcomes directly. Data acquisition cost falls toward zero as the network grows.</div></div></div>
-        </div>
-        <div>
-          <div class="section-head" style="margin-bottom:20px">
-            <h2 style="font-size:24px">Why it compounds</h2>
-          </div>
-          <div class="principles">
-            <div class="principle"><h3>Network effect</h3><p>Every entity that joins makes the impact picture more complete and the verification cheaper per record.</p></div>
-            <div class="principle"><h3>Real-time, not sampled</h3><p>Impact is computed from the live exchange, replacing lagging quarterly survey data.</p></div>
-            <div class="principle"><h3>Owned, then shared</h3><p>Entities own their data. Only anonymised, verified aggregates ever reach the Commons.</p></div>
-            <div class="principle"><h3>One Commons, four instruments</h3><p>Health, energy, mining and land publish to the same Commons, so capital reads one standard.</p></div>
-          </div>
-        </div>
+    <div class="cluster">
+      <div class="cluster-label">System and oversight</div>
+      <div class="grid">
+        <div class="p soon"><div class="pn">Zenith <span class="tag soon">next</span></div><div class="per">Ministry</div><div class="pd">The de-identified national picture and the impact score.</div></div>
+        <div class="p soon"><div class="pn">Core <span class="tag soon">next</span></div><div class="per">HIE operator</div><div class="pd">Node health, data flows, consent events and adapter status.</div></div>
+        <div class="p soon"><div class="pn">Shield <span class="tag soon">next</span></div><div class="per">Insurer and payer</div><div class="pd">Adjudicate claims against the shared, verifiable record.</div></div>
+        <div class="p soon"><div class="pn">Lumen <span class="tag soon">next</span></div><div class="per">Research</div><div class="pd">Consented, anonymised cohorts drawn from the Commons.</div></div>
       </div>
     </div>
-  </section>
+  </div>
 
-  <section class="band" id="trust">
-    <div class="wrap">
-      <div class="section-head">
-        <h2>Ownership and privacy are structural, not promised.</h2>
-        <p>Every surface states what it touches. Nothing is sold out the back. The two things that cannot bend are neutrality and privacy, because if either breaks, adoption stops and no amount of sponsor money brings it back.</p>
-      </div>
-      <div class="principles">
-        <div class="principle"><h3>Double-key consent</h3><p>Care-coordination consent and secondary-use consent are separate grants that can never be collapsed into one.</p></div>
-        <div class="principle"><h3>Append-only ledger</h3><p>The consent ledger and audit log are hash-chained and tamper-evident. Last-writer-wins is forbidden for clinical data.</p></div>
-        <div class="principle"><h3>Separation of duties</h3><p>A consent steward can never also hold a data-consuming role. The structure enforces it, not a policy memo.</p></div>
-        <div class="principle"><h3>IRIS advises, a human decides</h3><p>The agent explains and predicts from the record. Every clinical decision is made by a licensed person.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" id="iris">
-    <div class="wrap">
-      <div class="iris">
-        <div class="mark" aria-hidden="true"></div>
-        <div style="flex:1 1 320px">
-          <h2>IRIS reads the record, and names the specialist behind the answer.</h2>
-          <p>One intelligence across every product. It describes what is happening, predicts what comes next, and prescribes what to do, always grounded in the records and always pointing to the source. Florence routes the specialists underneath; the user sees IRIS.</p>
-        </div>
-        <a class="btn btn-primary" href="#products" style="background:var(--brass)">Watch IRIS in a demo</a>
-      </div>
-    </div>
-  </section>
+  <footer><div class="wrap">
+    <div class="wordmark-xl" style="font-size:20px">Qäre<span class="dot">·</span>Health</div>
+    <div class="mono" style="margin-top:12px">© 2026 Qäre Health Corporation, a Lexington Advisory Group company. Powered by Telos. Verified impact published to the Global Impact Commons.</div>
+  </div></footer>
 </main>
 
-<footer>
-  <div class="wrap">
-    <div class="f-top">
-      <div class="wordmark" style="font-size:22px">Qäre<span class="dot">·</span>Health</div>
-      <div style="max-width:40ch">A sovereign health information exchange for emerging markets. Built on the exchange, measured on the Commons.</div>
-    </div>
-    <div class="mono">© 2026 Qäre Health Corporation, a Lexington Advisory Group Company. Powered by Telos.</div>
-  </div>
-</footer>
-
+<script src="assets/exchange.js"></script>
+<script>
+  document.getElementById('reset').addEventListener('click', function () {
+    window.QareExchange.reset();
+    this.textContent = 'Demo reset';
+    var b = this; setTimeout(function () { b.textContent = 'Reset demo'; }, 1600);
+  });
+</script>
 </body>
 </html>

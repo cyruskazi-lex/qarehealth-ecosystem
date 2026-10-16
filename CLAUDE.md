@@ -4,22 +4,27 @@ Read this in full every session before anything else.
 
 ## What this repo is
 
-The Qäre Health build: a sovereign health information exchange for emerging
-markets, delivered as twelve persona-facing products on one shared spine. It
-is the health instrument in the iQuantile / Lexington ecosystem, a sibling to
-Helios (energy) and Stratum (mining), and it reads as one of them, not as a
-separate brand. Positioning and the full taxonomy live in
-`docs/product-registry.json`. The plan lives in `docs/PLAN.md`. The impact and
-tokenisation model lives in `docs/impact-tokenization.md`.
+Qäre Health: twelve connected healthcare apps on one shared exchange, the health
+member of the Lexington impact ecosystem alongside Helios (energy), Stratum
+(mining) and Mati (agriculture). The ecosystem's shared idea: an institution
+measures itself against a framework, the result is verified, and verified
+outcomes publish to the Global Impact Commons (GIC) where they connect to
+capital. Qäre applies that to health. The GIC is a separate property; Qäre
+connects to it, it does not rebuild it.
 
-## The spine (never renamed)
+Qäre is its own brand, not a copy of a sibling. It borrows the design concepts,
+not the colours.
 
-- **Qäre HIE** is the exchange (FHIR / HL7). It is infrastructure, not a product.
-- **Telos** is the Cognitive Contextual Model: provenance, hash-chaining, business logic.
-- **EESG Health Impact** is the Lexington framework the entities are measured against.
-- **Global Impact Commons (GIC)** is where signed, anonymised outcomes publish.
-- **Tokenised health impact** is the capital layer. It is the reason the ecosystem scales.
-- **IRIS** is the only public-facing agent. **Florence** is the internal master and never appears externally. **Donna** is the iQuantile platform master.
+## The two things the demo must prove
+
+1. **Interconnection.** The twelve apps share one exchange. A prescription
+   written in Pulse becomes a dispensing task in Cura, a demand signal in Nexus,
+   and a record update in Nova, live, across separate browser tabs. This is the
+   point of the demo. It is built in `assets/exchange.js`.
+2. **Verified impact to capital.** Every institution collects health-impact data
+   against the EESG Health Impact framework and, with consent, publishes a
+   verified, traceable record to the GIC to request capital. Nothing unverified
+   or untraceable is ever published.
 
 ## The twelve products
 
@@ -27,50 +32,64 @@ Care and clinical: Nova (patient), Pulse (clinician), Cura (pharmacist), Bridge 
 Facilities and industry: Apex (hospital), Prism (labs), Nexus (pharma ops), Relay (supply / 3PL).
 System and oversight: Zenith (ministry), Core (HIE operator), Shield (payer), Lumen (research).
 
+Live now: Pulse, Cura, Nova, Nexus. The rest reuse the shell and the exchange.
+
+## The spine (never renamed)
+
+- **Qäre HIE** is the exchange. In this static build it is `assets/exchange.js`:
+  an in-memory event log synced across tabs by BroadcastChannel and localStorage.
+- **Telos** is the Cognitive Contextual Model. **IRIS** is the only public agent;
+  **Florence** is internal and never shown. Each sibling has its own agent
+  (Helios Apollo, Mati Ceres), so IRIS is Qäre's.
+- **EESG Health Impact** is the framework: four pillars (Economic, Environment,
+  Social, Governance) over health fronts (access, care quality and safety,
+  outcomes, affordability, supply integrity and pharmacovigilance). Grammar is
+  pillar then front then measure then unit then rule then tier.
+- **Verification status**: Unmeasured, Claimed, Inconsistent, Verified. Never
+  upgraded by assertion, only by a matching record.
+- **Global Impact Commons (GIC)** is where verified, anonymised outcomes publish
+  and capital connects. It is a separate property; link to it, do not duplicate it.
+
 ## Build pattern
 
-- Static single page per product. React or hand-written HTML bundled to one
-  deployable file. No backend, no network calls, no browser-storage APIs.
-  In-memory seed only, so every demo runs from GitHub Pages or any static host.
-  The user is not running a Linux engine; nothing may require one.
-- Every product boots from a login that offers persona cards as the credential.
-  No password theatre. A disabled SSO affordance answers IT honestly.
-- Every surface is an action inbox first: you land on what needs you, not a
-  dashboard. Situation cards carry one primary action each.
-- Every surface states what it touches (the provenance line). Surfaces that only
-  read say so; only the posting path mutates state.
+- Static. One page per app under `products/<key>/index.html`, loading the shared
+  `assets/tokens.css`, `assets/qare.css`, `assets/exchange.js`, `assets/app.js`.
+  No backend, no build step. Runs from GitHub Pages or any static host. The user
+  is not running a Linux engine; nothing may require one.
+- Cross-tab sync needs a served origin, not file://. Say so when it matters.
+- Every app boots to an action inbox (land on what needs you), states its
+  provenance line, and reads and writes the shared exchange.
+- **Demo data, every product**: at least three institutions by size (SMALL,
+  MEDIUM, LARGE) and their key personas. The seed lives in `assets/exchange.js`.
 
-## Meridian design canon (shared with Helios and Stratum)
+## Qäre identity (its own, not a sibling's)
 
 Tokens live in `assets/tokens.css`, the one place hex values exist.
-- Chrome `#1A1512`, chrome field `#302A26`. Brass accent `#D4870A` for primary
-  series, selection and focus. Red `#BD252E` for alarm and critical only.
-- Page `#FDFDFC` warm paper, never dark. Card `#FFFFFF`, hairline `#EDEBE7`,
-  field border `#E8E5DD`, surface-alt `#F7F5F0`. Categorical ramp `#D4870A`,
-  `#28221E`, `#A87654`, `#6C787E`, `#CEBEA2`.
-- IBM Plex Sans for UI. DM Serif Display for the one display heading per page.
-  IBM Plex Mono for codes, IDs and numerals. Comfortaa for the iQuantile wordmark
-  only. The Qäre wordmark is a locked element (PNG once supplied); the current
-  styled text is a placeholder.
-- Cards 18px radius, soft shadow and hairline. Controls fully round. 8-point grid.
-- Data viz follows Carbon data-ink discipline. Brass for a single measure, the
-  ramp for multi-series. No 3D, no donuts, no gauges.
+- Warm paper `#FBFAF7`. Accent is iris indigo-violet `#4B3BA6` / `#6A5AE0`, the
+  single bold hue. Not Helios brass, not GIC dark green.
+- Verification is visible colour: verified green, claimed amber, unmeasured grey,
+  inconsistent red. Verified green echoes the GIC so the connection reads.
+- Nunito carries the wordmark and headings (its roundness matches the logo).
+  IBM Plex Sans for UI, IBM Plex Mono for IDs, codes and numerals.
+- Cards 16px radius, soft shadow, pills round, 8-point grid. Carbon data-ink
+  discipline for charts, no 3D, no donuts.
 
 ## Hard rules
 
-- No em dashes anywhere, in UI strings, comments or docs.
+- No em dashes anywhere.
 - No new hues and no hex literals outside `assets/tokens.css`.
 - IRIS advises; a licensed human makes every clinical decision.
-- Only anonymised, verified aggregates reach the Commons. Neutrality and privacy
-  cannot bend.
-- Named specialists under IRIS, never numbered agents.
-- Seed data is reconciled and frozen once its tests pass.
+- Only anonymised, verified aggregates reach the GIC. Consent is double-key and
+  revocable. Neutrality and privacy cannot bend.
+- Do not invent entities when a canonical one exists. The patient is Amara
+  Okonkwo; the large pharma is Nexagen (Arjun Mehta COO, Fatima Al-Rashid CFO,
+  Dr. Kwame Asante Regulatory). New demo orgs are named plainly and seeded once.
 
 ## Definition of done, every product
 
-The persona login works, the pathway in `docs/product-registry.json` runs end to
-end, the cross-cutting surfaces (consent, health-impact analysis, IRIS) are
-reachable, the page is warm-paper and keyboard-walkable, and it is committed.
+Boots to its persona, reads and writes the shared exchange so its events show in
+the other apps live, carries the impact and GIC action, is warm-paper and
+keyboard-walkable, has SMALL / MEDIUM / LARGE demo data, and is committed.
 
 ## Attribution
 

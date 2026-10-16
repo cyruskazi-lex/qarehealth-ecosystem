@@ -1,69 +1,69 @@
 /*
- * Qäre Health — Meridian design tokens (health edition).
- * The one place hex values live. Every surface reads colour through these
- * custom properties. Inherited verbatim from the iQuantile Meridian v3 canon
- * used by Helios and Stratum, so Qäre reads as a sibling instrument, not a
- * separate brand. No new hues without a spec that names one. No em dash.
+ * Qäre Health — its own identity. Not Helios (brass), not GIC (dark green).
+ * The design concepts are shared with the iQuantile family: warm paper ground,
+ * one restrained accent, verification as visible status, IBM Plex for work and
+ * numerals. The hues are Qäre's own: an iris indigo-violet on warm paper, with
+ * Nunito carrying the roundness of the wordmark. The one place hex values live.
+ * No em dashes.
  */
 
 :root {
-  /* Structure and chrome */
-  --chrome: #1A1512;        /* charcoal chrome, primary button fill */
-  --chrome-field: #302A26;  /* dark field inside chrome */
+  /* Ground and chrome */
+  --page: #FBFAF7;          /* warm paper, a touch warmer than the siblings */
+  --surface: #FFFFFF;
+  --surface-alt: #F5F3FA;   /* faint indigo-tinted panel */
+  --chrome: #171326;        /* indigo-black chrome, distinct from Helios brown-black */
+  --chrome-soft: #2A2440;
 
-  /* Accent and state */
-  --brass: #D4870A;         /* accent: primary chart series, selection, focus */
-  --brass-light: #E6A94B;
-  --petrol-dark: #A8690A;
-  --alarm: #BD252E;         /* red: alarm and critical only */
-  --alarm-dark: #992028;
+  /* Accent: iris indigo-violet, Qäre's single bold hue */
+  --iris: #4B3BA6;
+  --iris-bright: #6A5AE0;
+  --iris-deep: #332A73;
+  --iris-tint: #ECEAF8;
+  --iris-line: #DBD6F0;
 
   /* Text */
-  --ink: #1A1512;
-  --mid: #6B6560;
-  --faint: #A8A29C;
+  --ink: #1B1730;
+  --mid: #655F79;
+  --faint: #A49EB6;
 
-  /* Surfaces */
-  --page: #FDFDFC;          /* warm paper ground, never dark */
-  --surface: #FFFFFF;
-  --surface-alt: #F7F5F0;
-  --hairline: #EDEBE7;      /* the hairline rule */
-  --border: #E8E5DD;        /* field border */
+  /* Lines */
+  --hairline: #ECE9F2;
+  --border: #E0DCEC;
 
-  /* Tints */
-  --tint-brass: #FAF2E4;
-  --tint-alarm: #FCEEEE;
-  --row-hover: #FBF8F2;
-  --row-selected: #FCF4E6;
+  /* Verification status: the shared language of the exchange and the Commons.
+     Verified green echoes GIC so the connection reads, but tuned for warm paper. */
+  --verified: #1F9D6B;
+  --verified-tint: #E6F5EE;
+  --claimed: #C2871F;       /* amber: asserted, not yet matched by a record */
+  --claimed-tint: #FBF1DE;
+  --unmeasured: #8A849A;    /* grey: no record yet */
+  --unmeasured-tint: #EFEDF3;
+  --inconsistent: #C23B4B;  /* red: claim and record disagree */
+  --inconsistent-tint: #FBE9EB;
 
-  /* Health-impact semantic (reads as the brass family, not new hues) */
-  --verified: #6B6560;      /* a verified outcome is calm, not loud */
-  --impact: #D4870A;        /* tokenised health impact uses the accent */
+  /* Capital and impact (tie to GIC's language) */
+  --capital: #C2871F;
+  --impact: #6A5AE0;
 
-  /* Categorical ramp (Carbon data-ink discipline, no 3D, no donuts) */
-  --cat-1: #D4870A;
-  --cat-2: #28221E;
-  --cat-3: #A87654;
-  --cat-4: #6C787E;
-  --cat-5: #CEBEA2;
+  /* Categorical ramp for charts (indigo family, Carbon data-ink discipline) */
+  --cat-1: #4B3BA6;
+  --cat-2: #1F9D6B;
+  --cat-3: #C2871F;
+  --cat-4: #6A7A9E;
+  --cat-5: #B6A7E0;
 
-  /* Type */
+  /* Type: Nunito carries the wordmark roundness; IBM Plex does the work. */
+  --font-brand: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-display: 'DM Serif Display', Georgia, 'Times New Roman', serif; /* one display heading per page */
-  --font-wordmark: 'DM Serif Display', Georgia, serif; /* Qäre wordmark placeholder; final is a locked PNG */
-  --font-iquantile: 'Comfortaa', system-ui, sans-serif; /* iQuantile wordmark only */
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; /* codes, IDs, numerals */
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Shape */
-  --card-radius: 18px;
+  /* Shape, 8-point grid */
+  --card-radius: 16px;
   --control-radius: 999px;
-  --card-shadow: 0 5px 18px rgba(22, 17, 14, 0.10);
-  --focus-ring: 0 0 0 2px #D4870A;
+  --card-shadow: 0 6px 20px rgba(27, 23, 48, 0.07);
+  --focus-ring: 0 0 0 2px #6A5AE0;
 
-  /* Spacing, 8-point grid */
   --sp-xs: 4px; --sp-sm: 8px; --sp-md: 12px; --sp-lg: 16px;
-  --sp-xl: 24px; --sp-2xl: 32px; --sp-3xl: 48px; --sp-4xl: 72px;
-
-  /* Breakpoints (reference values; media queries repeat them) */
-  --bp-compact: 720px; --bp-medium: 1080px; --touch: 44px;
+  --sp-xl: 24px; --sp-2xl: 32px; --sp-3xl: 48px;
 }
