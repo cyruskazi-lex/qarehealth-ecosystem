@@ -74,6 +74,20 @@
     }).join('') + '</div>';
   }
 
+  // OS module rail. modules: [{key,label,ic,group?,badge?,calm?}]. Groups render
+  // as headers in order of first appearance. The app handles [data-mod] clicks.
+  function osNav(modules, curKey) {
+    var out = '', lastGroup = null;
+    modules.forEach(function (m) {
+      if (m.group && m.group !== lastGroup) { out += '<div class="grp">' + esc(m.group) + '</div>'; lastGroup = m.group; }
+      out += '<button class="navitem' + (m.key === curKey ? ' on' : '') + '" data-mod="' + esc(m.key) + '">' +
+        '<span class="ic">' + esc(m.ic || m.label.slice(0, 1)) + '</span>' + esc(m.label) +
+        (m.badge != null ? '<span class="bdg' + (m.calm ? ' calm' : '') + '">' + esc(m.badge) + '</span>' : '') +
+        '</button>';
+    });
+    return '<nav class="os-nav">' + out + '</nav>';
+  }
+
   var toastWrap = null;
   function toast(kicker, msg) {
     if (!toastWrap) { toastWrap = document.createElement('div'); toastWrap.className = 'toast-wrap'; document.body.appendChild(toastWrap); }
@@ -99,6 +113,6 @@
     init: function (app) { selfApp = app; },
     esc: esc, money: money, timeOf: timeOf,
     statusChip: statusChip, topbar: topbar, impactPanel: impactPanel,
-    tenantBar: tenantBar, toast: toast, watchToasts: watchToasts
+    tenantBar: tenantBar, osNav: osNav, toast: toast, watchToasts: watchToasts
   };
 })(typeof window !== 'undefined' ? window : this);
