@@ -31,16 +31,18 @@
 (function () {
   var X = window.QareExchange, UI = window.QareUI;
   UI.init('pulse');
-  var org = X.org('ORG-CLINIC'), who = org.personas[0], pt = X.PATIENT;
+  var orgs = X.orgsFor('pulse'), cur = X.org('ORG-CLINIC'), who = cur.personas[0], pt = X.PATIENT;
 
   function render() {
+    who = cur.personas[0];
     var sent = X.prescriptions().filter(function (r) { return r.by === 'pulse'; });
     document.getElementById('root').innerHTML =
-      UI.topbar({ appName: 'Pulse', personaName: who.name, personaRole: who.role + ' · ' + org.name + ' (small clinic)' }) +
+      UI.topbar({ appName: 'Pulse', personaName: who.name, personaRole: who.role + ' · ' + cur.name }) +
       '<main><div class="wrap">' +
         '<div class="eyebrow">Clinician workspace</div>' +
         '<div class="greet">One patient in the room. One decision to make.</div>' +
-        '<div class="sub">' + UI.esc(org.name) + ' · ' + UI.esc(org.region) + ' · consent to this record is held in Nova</div>' +
+        '<div class="sub">' + UI.esc(cur.name) + ' · ' + UI.esc(cur.region) + ' · consent to this record is held in Nova</div>' +
+        UI.tenantBar(orgs, cur.id) +
         '<div class="cols">' +
           '<section class="card shadow">' +
             '<h2 class="sec">Prescribe for ' + UI.esc(pt.name) + '</h2>' +
@@ -63,7 +65,7 @@
                 return '<div class="rec-line"><span>' + UI.esc(r.drugName) + ' x' + r.qty + '</span><span>' + (X.isDispensed(r.rxId) ? UI.statusChip('Verified').replace('Verified','Dispensed') : '<span class="chip claimed">awaiting pharmacy</span>') + '</span></div>';
               }).join('') : '<p class="sub" style="margin-top:6px">Nothing yet. Write one and watch it land in the other apps.</p>') +
             '</div>' +
-            '<div style="margin-top:20px">' + UI.impactPanel(org, { measures: [
+            '<div style="margin-top:20px">' + UI.impactPanel(cur, { measures: [
               { front: 'Access and coverage', measure: 'Consults completed, quarter', value: '1,284', status: 'Verified' },
               { front: 'Care quality and safety', measure: 'Guideline-concordant scripts', value: '96%', status: 'Claimed' }
             ] }) + '</div>' +
@@ -82,15 +84,17 @@
       rxId: 'RX-' + Date.now().toString().slice(-6),
       by: 'pulse', patientId: pt.id, patientName: pt.name,
       drug: code, drugName: d.name, qty: qty, maker: d.maker,
-      orgId: org.id, region: org.region, prescriber: who.name
+      orgId: cur.id, region: cur.region, prescriber: who.name
     }, { app: 'pulse', persona: who.id });
     UI.toast('Written', d.name + ' x' + qty + ' is now on the exchange.');
   });
 
   document.addEventListener('click', function (e) {
+    var t = e.target.getAttribute('data-tenant');
+    if (t) { cur = X.org(t); who = cur.personas[0]; render(); return; }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: org.id, orgName: org.name, outcome: 'Primary care access, Q current', status: 'Verified' }, { app: 'pulse', persona: who.id });
-      UI.toast('Published to GIC', org.name + ' posted a verified record to the Commons.');
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Primary care access, Q current', status: 'Verified' }, { app: 'pulse', persona: who.id });
+      UI.toast('Published to GIC', cur.name + ' posted a verified record to the Commons.');
     }
   });
 

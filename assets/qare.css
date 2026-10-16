@@ -66,6 +66,14 @@ a { color: inherit; text-decoration: none; }
 .provenance { font-family: var(--font-mono); font-size: 11px; color: var(--faint); margin-top: 14px; display: flex; gap: 7px; align-items: baseline; }
 .provenance::before { content: "◦"; color: var(--iris-bright); }
 
+/* Tenant size switcher */
+.tenants { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.tenant { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-ui); font-size: 13px; cursor: pointer; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 7px 14px; color: var(--mid); transition: all .15s ease; }
+.tenant:hover { border-color: var(--iris-line); }
+.tenant.on { background: var(--iris-tint); border-color: var(--iris-line); color: var(--iris-deep); font-weight: 600; }
+.tenant .tz { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--iris); background: var(--surface); border-radius: 999px; padding: 1px 7px; }
+.tenant.on .tz { background: #fff; }
+
 /* Live toast when a cross-tab event lands */
 .toast-wrap { position: fixed; right: 20px; bottom: 20px; z-index: 90; display: flex; flex-direction: column; gap: 8px; max-width: 340px; }
 .toast { background: var(--chrome); color: #fff; border-radius: 12px; padding: 12px 14px; box-shadow: var(--card-shadow); font-size: 13px; opacity: 0; transform: translateY(8px); transition: all .25s ease; }

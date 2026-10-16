@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Qäre Apex</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../../assets/tokens.css" />
+<link rel="stylesheet" href="../../assets/qare.css" />
+<style>
+  main { padding: 24px 0 80px; }
+  .cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; margin-top: 20px; }
+  @media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
+  h2.sec { font-family: var(--font-brand); font-weight: 700; font-size: 16px; margin-bottom: 10px; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--hairline); }
+  .row.fresh { animation: flash 1.4s ease; } @keyframes flash { 0%{background:var(--iris-tint)} 100%{background:transparent} }
+  .row .d { font-size: 14px; font-weight: 600; } .row .m { font-size: 12px; color: var(--mid); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="../../assets/exchange.js"></script>
+<script src="../../assets/app.js"></script>
+<script>
+(function () {
+  var X = window.QareExchange, UI = window.QareUI;
+  UI.init('apex');
+  var orgs = X.orgsFor('apex');
+  var cur = X.org('ORG-HOSPITAL');
+  var seen = {};
+
+  function render() {
+    var who = cur.personas[0];
+    var admitted = X.admissions().map(function (a) { return a.household; });
+    var incoming = X.referrals().filter(function (r) { return admitted.indexOf(r.household) < 0; });
+    var beds = { total: cur.sizeClass === 'LARGE' ? 420 : cur.sizeClass === 'MEDIUM' ? 180 : 40 };
+    beds.used = Math.round(beds.total * 0.82) + X.admissions().length;
+    document.getElementById('root').innerHTML =
+      UI.topbar({ appName: 'Apex', personaName: who.name, personaRole: who.role + ' · ' + cur.name }) +
+      '<main><div class="wrap">' +
+        '<div class="eyebrow">Hospital operations</div>' +
+        '<div class="greet">' + (incoming.length ? (incoming.length + ' referral' + (incoming.length > 1 ? 's' : '') + ' waiting to admit.') : 'No referrals waiting. Floor is steady.') + '</div>' +
+        '<div class="sub">Referrals arrive from Bridge in the field; admissions update the bed state</div>' +
+        UI.tenantBar(orgs, cur.id) +
+        '<div class="figs" style="margin-top:18px">' +
+          '<div class="fig"><div class="fv">' + beds.used + '/' + beds.total + '</div><div class="fk">beds occupied</div></div>' +
+          '<div class="fig"><div class="fv">' + incoming.length + '</div><div class="fk">incoming referrals</div></div>' +
+          '<div class="fig"><div class="fv">3</div><div class="fk">theatre cases today</div></div>' +
+          '<div class="fig"><div class="fv">B+</div><div class="fk">health impact score</div></div>' +
+        '</div>' +
+        '<div class="cols">' +
+          '<section class="card shadow"><h2 class="sec">Referrals from the field</h2>' +
+            (incoming.length ? incoming.slice().reverse().map(function (r) {
+              var fresh = !seen[r.household]; seen[r.household] = true;
+              return '<div class="row' + (fresh ? ' fresh' : '') + '"><div><div class="d">' + UI.esc(r.patientName) + '</div><div class="m">' + UI.esc(r.village) + ' · ' + UI.esc(r.reason) + '</div></div>' +
+                '<button class="btn btn-primary btn-sm" data-admit="' + UI.esc(r.household) + '">Admit</button></div>';
+            }).join('') : '<p class="sub" style="margin-top:6px">Open Bridge in another tab and refer a household; it appears here live.</p>') +
+            '<p class="provenance">reads REFERRAL events; admitting writes an ADMISSION event back to the exchange</p>' +
+          '</section>' +
+          '<section>' + UI.impactPanel(cur, { measures: [
+            { front: 'Access and coverage', measure: 'Admissions, quarter', value: '4,820', status: 'Verified' },
+            { front: 'Care quality and safety', measure: 'Readmission rate', value: '6.1%', status: 'Claimed' },
+            { front: 'Affordability and financial protection', measure: 'Out-of-pocket share', value: '31%', status: 'Inconsistent' }
+          ] }) + '</section>' +
+        '</div>' +
+      '</div></main>';
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.getAttribute('data-tenant'); if (t) { cur = X.org(t); render(); return; }
+    var hh = e.target.getAttribute('data-admit');
+    if (hh) {
+      var r = X.referrals().filter(function (x) { return x.household === hh; })[0];
+      X.append('ADMISSION', { household: hh, patientName: r ? r.patientName : hh, orgId: cur.id }, { app: 'apex', persona: cur.personas[0].id });
+      UI.toast('Admitted', (r ? r.patientName : hh) + ' admitted. Bed state updated.');
+      return;
+    }
+    if (e.target.matches('[data-gic-publish]')) {
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Hospital access and quality, Q current', status: 'Verified' }, { app: 'apex', persona: cur.personas[0].id });
+      UI.toast('Published to GIC', cur.name + ' posted a verified record to the Commons.');
+    }
+  });
+
+  X.subscribe(render);
+  UI.watchToasts(function (ev) {
+    if (ev.type === 'REFERRAL') return { k: 'Bridge', msg: UI.esc(ev.payload.patientName) + ' referred from ' + UI.esc(ev.payload.village) + '.' };
+    return null;
+  });
+  render();
+})();
+</script>
+</body>
+</html>

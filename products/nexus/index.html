@@ -29,19 +29,24 @@
 (function () {
   var X = window.QareExchange, UI = window.QareUI;
   UI.init('nexus');
-  var org = X.org('ORG-NEXAGEN'), who = org.personas[0];
+  var orgs = X.orgsFor('nexus'), cur = X.org('ORG-NEXAGEN'), who = cur.personas[0];
   var seen = {};
 
   function render() {
-    var signals = X.eventsOfType('DEMAND_SIGNAL').filter(function (e) { return e.payload.maker === org.id; });
+    who = cur.personas[0];
+    // Demand is keyed to Nexagen as the maker in the seed; other tenants read
+    // their own demand but the seeded formulary is Nexagen's, so large tenant
+    // shows the live signal and smaller tenants show their own (empty until seeded).
+    var signals = X.eventsOfType('DEMAND_SIGNAL').filter(function (e) { return e.payload.maker === 'ORG-NEXAGEN'; });
     var units = signals.reduce(function (a, e) { return a + (e.payload.qty || 0); }, 0);
     var revenue = signals.reduce(function (a, e) { var d = X.drug(e.payload.drug); return a + (d ? d.unitPrice * e.payload.qty : 0); }, 0);
     document.getElementById('root').innerHTML =
-      UI.topbar({ appName: 'Nexus', personaName: who.name, personaRole: who.role + ' · ' + org.name + ' (large manufacturer)' }) +
+      UI.topbar({ appName: 'Nexus', personaName: who.name, personaRole: who.role + ' · ' + cur.name }) +
       '<main><div class="wrap">' +
         '<div class="eyebrow">Pharma operations</div>' +
         '<div class="greet">' + (signals.length ? ('Live demand on ' + signals.length + ' dispensing event' + (signals.length > 1 ? 's' : '') + '.') : 'The market is quiet. One cold-chain item needs you.') + '</div>' +
-        '<div class="sub">' + UI.esc(org.name) + ' · ' + UI.esc(org.region) + ' · demand updates the moment a pharmacy dispenses your product</div>' +
+        '<div class="sub">' + UI.esc(cur.name) + ' · ' + UI.esc(cur.region) + ' · demand updates the moment a pharmacy dispenses your product</div>' +
+        UI.tenantBar(orgs, cur.id) +
         '<div class="figs" style="margin-top:18px">' +
           '<div class="fig"><div class="fv">' + units + '</div><div class="fk">packs pulled, live</div></div>' +
           '<div class="fig"><div class="fv">' + UI.money(revenue, '$') + '</div><div class="fk">ex-factory value</div></div>' +
@@ -59,11 +64,17 @@
               }).join('') : '<p class="sub" style="margin-top:6px">Dispense a CardiNex-10 in Cura and the demand lands here live.</p>') +
               '<p class="provenance">reads dispensing events from the exchange; replaces sampled quarterly data with live signal</p>' +
             '</div>' +
-            '<div class="card shadow stripe-crit" style="margin-top:16px"><h2 class="sec">Cold chain · OncoNex-100</h2>' +
-              '<p class="sub" style="margin-top:0">Shipment BN-2026-007 peaked at 12.9°C for 400 units. IRIS: hold the lot, notify the US hospital customer, open a deviation. A licensed QP signs off.</p>' +
-              '<button class="btn btn-primary btn-sm" style="margin-top:12px">Open recall command</button></div>' +
+            (function () {
+              var alerts = X.coldChainAlerts().filter(function (a) { return a.maker === 'ORG-NEXAGEN'; });
+              var a = alerts[alerts.length - 1];
+              var line = a ? ('Shipment ' + UI.esc(a.shipment) + ' peaked at ' + a.temp + '°C for ' + a.units + ' units of ' + UI.esc(a.product) + ' on ' + UI.esc(a.lane) + ', flagged live by Relay.') :
+                'Shipment SHP-07 peaked at 12.9°C for 400 units. Raise it from Relay to see it land here live.';
+              return '<div class="card shadow stripe-crit" style="margin-top:16px"><h2 class="sec">Cold chain · OncoNex-100</h2>' +
+                '<p class="sub" style="margin-top:0">' + line + ' IRIS: hold the lot, notify the customer, open a deviation. A licensed QP signs off.</p>' +
+                '<button class="btn btn-primary btn-sm" style="margin-top:12px">Open recall command</button></div>';
+            })() +
           '</section>' +
-          '<section>' + UI.impactPanel(org, { measures: [
+          '<section>' + UI.impactPanel(cur, { measures: [
             { front: 'Access and coverage', measure: 'Patients reached, quarter', value: '1.8M', status: 'Verified' },
             { front: 'Supply integrity and pharmacovigilance', measure: 'Serialised to the last mile', value: '98%', status: 'Claimed' },
             { front: 'Environment', measure: 'Carbon intensity vs target', value: '+12%', status: 'Inconsistent' }
@@ -78,15 +89,18 @@
   }
 
   document.addEventListener('click', function (e) {
+    var t = e.target.getAttribute('data-tenant');
+    if (t) { cur = X.org(t); who = cur.personas[0]; render(); return; }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: org.id, orgName: org.name, outcome: 'Medicines access and supply integrity, Q current', status: 'Verified', capitalAsk: 1200000 }, { app: 'nexus', persona: who.id });
-      UI.toast('Published to GIC', 'Nexagen posted a verified outcome and a capital request.');
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Medicines access and supply integrity, Q current', status: 'Verified', capitalAsk: 1200000 }, { app: 'nexus', persona: who.id });
+      UI.toast('Published to GIC', cur.name + ' posted a verified outcome and a capital request.');
     }
   });
 
   X.subscribe(render);
   UI.watchToasts(function (ev) {
-    if (ev.type === 'DEMAND_SIGNAL' && ev.payload.maker === org.id) return { k: 'Cura', msg: UI.esc(ev.payload.drugName) + ' dispensed in ' + UI.esc(ev.payload.region) + '. Demand updated.' };
+    if (ev.type === 'DEMAND_SIGNAL' && ev.payload.maker === 'ORG-NEXAGEN') return { k: 'Cura', msg: UI.esc(ev.payload.drugName) + ' dispensed in ' + UI.esc(ev.payload.region) + '. Demand updated.' };
+    if (ev.type === 'COLD_CHAIN_ALERT' && ev.payload.maker === 'ORG-NEXAGEN') return { k: 'Relay', msg: 'Cold-chain breach on ' + UI.esc(ev.payload.product) + ' ' + UI.esc(ev.payload.shipment) + '.' };
     return null;
   });
   render();

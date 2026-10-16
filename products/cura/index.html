@@ -30,18 +30,20 @@
 (function () {
   var X = window.QareExchange, UI = window.QareUI;
   UI.init('cura');
-  var org = X.org('ORG-PHARMACY'), who = org.personas[0];
+  var orgs = X.orgsFor('cura'), cur = X.org('ORG-PHARMACY'), who = cur.personas[0];
   var lastSeen = {};
 
   function render() {
+    who = cur.personas[0];
     var queue = X.prescriptions().filter(function (r) { return !X.isDispensed(r.rxId); });
     var doneCount = X.dispenses().length;
     document.getElementById('root').innerHTML =
-      UI.topbar({ appName: 'Cura', personaName: who.name, personaRole: who.role + ' · ' + org.name + ' (small pharmacy)' }) +
+      UI.topbar({ appName: 'Cura', personaName: who.name, personaRole: who.role + ' · ' + cur.name }) +
       '<main><div class="wrap">' +
         '<div class="eyebrow">Pharmacist workspace</div>' +
         '<div class="greet">' + (queue.length ? (queue.length + ' prescription' + (queue.length > 1 ? 's' : '') + ' waiting to dispense.') : 'Nothing waiting. The counter is clear.') + '</div>' +
-        '<div class="sub">' + UI.esc(org.name) + ' · ' + UI.esc(org.region) + ' · prescriptions arrive from Pulse the moment a clinician writes them</div>' +
+        '<div class="sub">' + UI.esc(cur.name) + ' · ' + UI.esc(cur.region) + ' · prescriptions arrive from Pulse the moment a clinician writes them</div>' +
+        UI.tenantBar(orgs, cur.id) +
         '<div class="cols">' +
           '<section class="card shadow"><h2 class="sec">Dispensing queue</h2>' +
             (queue.length ? queue.slice().reverse().map(function (r) {
@@ -58,7 +60,7 @@
             '<div class="card shadow"><h2 class="sec">Dispensed today</h2>' +
               '<div class="figs"><div class="fig"><div class="fv">' + doneCount + '</div><div class="fk">packs dispensed</div></div>' +
               '<div class="fig"><div class="fv">100%</div><div class="fk">serial reconciled</div></div></div></div>' +
-            '<div style="margin-top:20px">' + UI.impactPanel(org, { measures: [
+            '<div style="margin-top:20px">' + UI.impactPanel(cur, { measures: [
               { front: 'Access and coverage', measure: 'Scripts filled, quarter', value: '3,910', status: 'Verified' },
               { front: 'Supply integrity and pharmacovigilance', measure: 'Serialised packs verified', value: '100%', status: 'Verified' }
             ] }) + '</div>' +
@@ -68,19 +70,21 @@
   }
 
   document.addEventListener('click', function (e) {
+    var t = e.target.getAttribute('data-tenant');
+    if (t) { cur = X.org(t); who = cur.personas[0]; render(); return; }
     var rx = e.target.getAttribute('data-dispense');
     if (rx) {
       var p = X.prescriptions().filter(function (r) { return r.rxId === rx; })[0];
       if (!p) return;
       var serial = 'PK-' + p.drug.slice(0, 4) + '-' + Date.now().toString().slice(-5);
-      X.append('RX_DISPENSED', { rxId: rx, drug: p.drug, drugName: p.drugName, qty: p.qty, packSerial: serial, byOrgId: org.id, maker: p.maker, region: p.region, patientName: p.patientName }, { app: 'cura', persona: who.id });
+      X.append('RX_DISPENSED', { rxId: rx, drug: p.drug, drugName: p.drugName, qty: p.qty, packSerial: serial, byOrgId: cur.id, maker: p.maker, region: p.region, patientName: p.patientName }, { app: 'cura', persona: who.id });
       X.append('DEMAND_SIGNAL', { drug: p.drug, drugName: p.drugName, qty: p.qty, region: p.region, maker: p.maker }, { app: 'cura', persona: who.id });
       UI.toast('Dispensed', p.drugName + ' · pack ' + serial + '. Demand signal sent to the maker.');
       return;
     }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: org.id, orgName: org.name, outcome: 'Medicines access, Q current', status: 'Verified' }, { app: 'cura', persona: who.id });
-      UI.toast('Published to GIC', org.name + ' posted a verified record to the Commons.');
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Medicines access, Q current', status: 'Verified' }, { app: 'cura', persona: who.id });
+      UI.toast('Published to GIC', cur.name + ' posted a verified record to the Commons.');
     }
   });
 

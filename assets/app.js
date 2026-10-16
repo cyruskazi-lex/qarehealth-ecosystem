@@ -64,6 +64,16 @@
       '</div>';
   }
 
+  // Tenant switcher: lets a demo move one app across SMALL / MEDIUM / LARGE
+  // institutions of the same kind. Renders size tabs; the app handles the click.
+  function tenantBar(orgs, curId) {
+    return '<div class="tenants">' + orgs.map(function (o) {
+      var on = o.id === curId;
+      return '<button class="tenant' + (on ? ' on' : '') + '" data-tenant="' + esc(o.id) + '" aria-pressed="' + on + '">' +
+        '<span class="tz">' + esc(o.sizeClass) + '</span>' + esc(o.name) + '</button>';
+    }).join('') + '</div>';
+  }
+
   var toastWrap = null;
   function toast(kicker, msg) {
     if (!toastWrap) { toastWrap = document.createElement('div'); toastWrap.className = 'toast-wrap'; document.body.appendChild(toastWrap); }
@@ -89,6 +99,6 @@
     init: function (app) { selfApp = app; },
     esc: esc, money: money, timeOf: timeOf,
     statusChip: statusChip, topbar: topbar, impactPanel: impactPanel,
-    toast: toast, watchToasts: watchToasts
+    tenantBar: tenantBar, toast: toast, watchToasts: watchToasts
   };
 })(typeof window !== 'undefined' ? window : this);
