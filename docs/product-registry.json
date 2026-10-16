@@ -1,0 +1,137 @@
+{
+  "ecosystem": "Qäre Health",
+  "operator": "Qäre Health Corporation, a Lexington Advisory Group company",
+  "agent": { "public": "IRIS", "internal": "Florence", "platform_master": "Donna" },
+  "spine": {
+    "exchange": "Qäre HIE (FHIR/HL7)",
+    "context_model": "Telos (Cognitive Contextual Model, provenance + hash-chaining)",
+    "framework": "EESG Health Impact (Lexington)",
+    "commons": "Global Impact Commons (GIC)",
+    "capital_layer": "Tokenised verified health outcomes"
+  },
+  "design_system": "Meridian (shared with Helios and Stratum)",
+  "build_pattern": "Static single-page React/HTML per product, in-memory seed, no backend",
+  "demo_pharma_entity": "Nexagen Pharmaceuticals Ltd. (Bangladesh, Beximco-scale)",
+  "clusters": {
+    "care_clinical": ["nova", "pulse", "cura", "bridge"],
+    "facilities_industry": ["apex", "prism", "nexus", "relay"],
+    "system_oversight": ["zenith", "core", "shield", "lumen"]
+  },
+  "cross_cutting_surfaces": [
+    "login_personas",
+    "consent_data_ownership",
+    "health_impact_analysis",
+    "impact_tokenization_commons",
+    "iris_panel"
+  ],
+  "products": [
+    {
+      "key": "nova", "name": "Qäre Nova", "persona": "Patient",
+      "demo_persona": "Ayesha Rahman, 34, Dhaka",
+      "cluster": "care_clinical",
+      "pathway": "Log in with the patient card, see the record she owns, grant Pulse a care-coordination consent, revoke a lapsed one, view what IRIS can and cannot see.",
+      "key_screens": ["login", "my record", "consent center", "share with a clinician", "impact contribution"],
+      "demonstrates": ["data ownership", "double-key consent", "privacy"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "pulse", "name": "Qäre Pulse", "persona": "Clinician",
+      "demo_persona": "Dr. Imran Hossain, GP",
+      "cluster": "care_clinical",
+      "pathway": "Open Ayesha's consented record, see an IRIS risk flag grounded in the record, prescribe in under thirty seconds against the formulary, write the event back to the exchange.",
+      "key_screens": ["patient queue", "record + IRIS flag", "e-prescribe", "write-back confirmation"],
+      "demonstrates": ["30-second prescription", "IRIS advises human decides", "live write to exchange"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "cura", "name": "Qäre Cura", "persona": "Pharmacist",
+      "demo_persona": "Nusrat Jahan, community pharmacy",
+      "cluster": "care_clinical",
+      "pathway": "Receive the prescription as a dispensing task, scan a serialised pack, reconcile against manufacturer data, offer a formulary substitution, record the dispense.",
+      "key_screens": ["dispensing queue", "scan + reconcile", "substitution", "dispense record"],
+      "demonstrates": ["serialisation", "anti-counterfeit", "formulary substitution"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "bridge", "name": "Qäre Bridge", "persona": "Community health worker",
+      "demo_persona": "Fatima Begum, CHW, rural Sylhet",
+      "cluster": "care_clinical",
+      "pathway": "Run a household visit offline on low-end hardware, screen and refer, sync to the exchange when back online.",
+      "key_screens": ["visit list", "screening form", "referral", "offline sync"],
+      "demonstrates": ["offline-first", "low-end hardware", "last-mile reach"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "apex", "name": "Qäre Apex", "persona": "Hospital operations",
+      "demo_persona": "Shahana Akter, hospital administrator",
+      "cluster": "facilities_industry",
+      "pathway": "Land on what needs the facility: admissions, bed state, a theatre delay, a flagged account, each with one action.",
+      "key_screens": ["command home", "beds + admissions", "theatre schedule", "account exception"],
+      "demonstrates": ["action inbox", "facility record", "exchange referrals"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "prism", "name": "Qäre Prism", "persona": "Laboratory",
+      "demo_persona": "Dr. Kamal Uddin, lab director",
+      "cluster": "facilities_industry",
+      "pathway": "Take an order from the exchange, run QC, release a result that lands in Pulse and the patient's Nova record.",
+      "key_screens": ["order queue", "result entry + QC", "turnaround", "release to exchange"],
+      "demonstrates": ["orders in results out", "quality control", "closed loop"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "nexus", "name": "Qäre Nexus", "persona": "Pharma operations",
+      "demo_persona": "COO, Nexagen Pharmaceuticals",
+      "cluster": "facilities_industry",
+      "pathway": "Command home routes a cold-chain breach and a demand spike in Sylhet; IRIS explains the ripple into a filing and a bid; act within the window.",
+      "key_screens": ["command home", "demand + supply", "cold-chain breach", "recall command", "sustainability + impact"],
+      "demonstrates": ["live demand visibility", "24h supply response", "operating system not ERP"],
+      "status": "spec_deepest"
+    },
+    {
+      "key": "relay", "name": "Qäre Relay", "persona": "Supply chain and 3PL",
+      "demo_persona": "Logistics lead, distribution partner",
+      "cluster": "facilities_industry",
+      "pathway": "Track serialised movement plant to shelf, catch a cold-chain excursion, reconcile a delivery against the order.",
+      "key_screens": ["shipments", "cold-chain trace", "reconciliation", "exception"],
+      "demonstrates": ["serialised movement", "cold chain", "reconciliation"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "zenith", "name": "Qäre Zenith", "persona": "Ministry of Health",
+      "demo_persona": "Director General of Health Services",
+      "cluster": "system_oversight",
+      "pathway": "See the de-identified national picture: a disease signal rising in a district, coverage gaps, stockouts, and the health-impact score, all competitor-blind.",
+      "key_screens": ["national map", "disease signal", "coverage + stockouts", "impact dashboard"],
+      "demonstrates": ["population view", "de-identification", "public-interest story"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "core", "name": "Qäre Core", "persona": "HIE operator",
+      "demo_persona": "Qäre implementation engineer",
+      "cluster": "system_oversight",
+      "pathway": "Operate the exchange: node health, data-flow volumes, consent events, adapter status, and the alert queue.",
+      "key_screens": ["operations console", "node health", "consent events", "adapter status", "alerts"],
+      "demonstrates": ["who administers this", "data flows", "trust in the infrastructure"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "shield", "name": "Qäre Shield", "persona": "Insurer and payer",
+      "demo_persona": "Claims lead, health financing scheme",
+      "cluster": "system_oversight",
+      "pathway": "Adjudicate a claim against the shared verifiable record, catch a mismatch, approve a copay.",
+      "key_screens": ["claims queue", "adjudication", "mismatch", "approval"],
+      "demonstrates": ["claims against truth", "fraud reduction", "payer on the exchange"],
+      "status": "prototype_next"
+    },
+    {
+      "key": "lumen", "name": "Qäre Lumen", "persona": "Research",
+      "demo_persona": "Principal investigator, public health study",
+      "cluster": "system_oversight",
+      "pathway": "Build a consented, anonymised cohort from the Impact Commons, see consent provenance, export a study-ready dataset.",
+      "key_screens": ["cohort builder", "consent provenance", "study dataset", "commons link"],
+      "demonstrates": ["consented research", "anonymisation", "commons as the source"],
+      "status": "prototype_next"
+    }
+  ]
+}
