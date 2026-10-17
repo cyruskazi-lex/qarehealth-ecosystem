@@ -35,7 +35,9 @@
   .tag { font-family: var(--font-mono); font-size: 10px; border-radius: 999px; padding: 3px 9px; }
   .tag.live { background: var(--verified-tint); color: var(--verified); }
   .tag.soon { background: var(--unmeasured-tint); color: var(--mid); }
-  .wordmark-xl { font-family: var(--font-brand); font-weight: 800; font-size: 26px; }
+  .wordmark-xl { font-family: var(--font-brand); font-weight: 700; font-size: 24px; display: inline-flex; align-items: center; gap: 9px; color: var(--ink); }
+  .wordmark-xl img { height: 26px; width: auto; display: block; }
+  .wordmark-xl.sm img { height: 20px; }
   .wordmark-xl .dot { color: var(--iris-bright); }
   footer { border-top: 1px solid var(--hairline); margin-top: 56px; padding: 30px 0 50px; }
   footer .mono { color: var(--faint); font-size: 12px; }
@@ -45,7 +47,7 @@
 </head>
 <body>
 <div class="wrap topline">
-  <div class="wordmark-xl">Qäre<span class="dot">·</span>Health</div>
+  <div class="wordmark-xl"><img src="assets/brand/qare-wordmark.png" alt="Qäre"> Health</div>
   <div class="right">
     <button class="btn btn-ghost btn-sm" id="reset">Reset demo</button>
     <a class="btn btn-ghost btn-sm" href="https://claude.ai/artifact/2qLBV7z36uALqjeJPXxNG9" target="_blank" rel="noopener">Global Impact Commons</a>
@@ -102,7 +104,7 @@
   </div>
 
   <footer><div class="wrap">
-    <div class="wordmark-xl" style="font-size:20px">Qäre<span class="dot">·</span>Health</div>
+    <div class="wordmark-xl sm" style="font-size:20px"><img src="assets/brand/qare-wordmark.png" alt="Qäre"> Health</div>
     <div class="mono" style="margin-top:12px">© 2026 Qäre Health Corporation, a Lexington Advisory Group company. Powered by Telos. Verified impact published to the Global Impact Commons.</div>
   </div></footer>
 </main>

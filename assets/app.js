@@ -29,9 +29,10 @@
   function topbar(opts) {
     opts = opts || {};
     var initials = (opts.personaName || '').split(' ').map(function (w) { return w[0]; }).filter(Boolean).slice(0, 2).join('').toUpperCase();
+    var logo = (typeof window !== 'undefined' && window.__QARE_LOGO__) ? window.__QARE_LOGO__ : '../../assets/brand/qare-wordmark.png';
     return '' +
       '<header class="qbar">' +
-        '<a href="../../index.html" class="wordmark" title="All Qäre apps">Qäre<span class="dot">·</span>Health</a>' +
+        '<a href="../../index.html" class="wordmark" title="All Qäre apps"><img src="' + logo + '" alt="Qäre" class="wm-img"> Health</a>' +
         '<span class="app-name">' + esc(opts.appName || '') + '</span>' +
         '<span class="live"><span class="d"></span>one exchange, live</span>' +
         '<span class="spacer"></span>' +
