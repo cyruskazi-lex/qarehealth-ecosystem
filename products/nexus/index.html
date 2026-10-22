@@ -305,12 +305,19 @@
       rails: { exchange: [], eesg: [{ pillar: 'Governance', front: 'Supply integrity and pharmacovigilance', measure: 'Markets in good standing', value: '60 of 62', unit: '', status: 'Verified' }], gic: false },
       agents: ['Regulatory', 'Quality'],
       render: function () {
-        return head('Regulatory', 'Registrations by market and the submissions in flight.') +
-          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Market</th><th>Product</th><th>Status</th><th>Next action</th></tr></thead><tbody>' +
-          [['US FDA', 'CardiNex-10', 'Approved', 'annual report due'], ['EU (AGES)', 'CardiNex-10', 'Variation', 'due 46d, 2 docs missing'], ['TGA', 'OncoNex-100', 'Approved', 'none'], ['WHO PQ', 'CardiNex-10', 'In review', 'respond to queries']].map(function (r) {
+        var pipe = [['Submission prepared', 8, 'claimed'], ['In agency review', 11, 'claimed'], ['Queries to answer', 3, 'inconsistent'], ['Approved, 12 mo', 27, 'verified']];
+        return head('Regulatory', 'Registrations by market, the submission pipeline, and the obligations in flight.') +
+          kpiRow([['62', 'markets', false], ['60', 'in good standing', false], ['22', 'submissions in flight', false], ['46d', 'nearest deadline', false]]) +
+          '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Registrations by market</div>' +
+          '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Market</th><th>Product</th><th>Status</th><th>Next action</th></tr></thead><tbody>' +
+          [['US FDA', 'CardiNex-10', 'Approved', 'annual report due'], ['EU (AGES)', 'CardiNex-10', 'Variation', 'due 46d, 2 docs missing'], ['TGA', 'OncoNex-100', 'Approved', 'none'], ['WHO PQ', 'CardiNex-10', 'In review', 'respond to queries'], ['NAFDAC', 'OncoNex-100', 'Submitted', 'awaiting acknowledgement']].map(function (r) {
             var c = r[2] === 'Approved' ? 'verified' : r[2] === 'Variation' ? 'inconsistent' : 'claimed';
             return '<tr><td class="nm">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td><span class="chip ' + c + '">' + esc(r[2]) + '</span></td><td class="sub2">' + esc(r[3]) + '</td></tr>'; }).join('') +
-          '</tbody></table></div>' + prov('registrations and submissions are tracked as live obligations, not a static file');
+          '</tbody></table></div></div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Submission pipeline</div>' +
+          pipe.map(function (p) { return '<div class="row" style="padding:8px 10px"><span class="m">' + esc(p[0]) + '</span><span style="display:flex;gap:8px;align-items:center"><span class="v">' + p[1] + '</span><span class="chip ' + p[2] + '"></span></span></div>'; }).join('') +
+          '<div class="sub2" style="margin-top:10px">eCTD dossiers tracked as live obligations. The EU variation is the one at risk.</div></div></div>' +
+          prov('registrations and submissions are live obligations with deadlines, not a static file');
       } },
 
     { key: 'demand', label: 'Demand', ic: 'DM', group: 'Commercial',
@@ -330,9 +337,17 @@
       rails: { exchange: [], eesg: [{ pillar: 'Economic', front: 'Affordability and financial protection', measure: 'Cost per pack, CardiNex-10', value: '$31', unit: '', status: 'Verified' }], gic: false },
       agents: ['Finance', 'Operations'],
       render: function () {
-        return head('Finance', 'Revenue, cost and the working-capital pressure behind operations.') +
-          kpiRow([[money(Math.round(400000000 * scale()), '$'), 'revenue, year', false], [money(Math.round(320000 * scale()), '$'), 'receivables overdue', false], ['62', 'export markets', false], ['18%', 'EBITDA margin', false]]) +
-          '<div class="card shadow"><div class="sub" style="font-size:13px">A receivable of ' + money(Math.round(320000 * scale()), '$') + ' is 45 days overdue from a Middle East distributor, the main working-capital pressure this quarter. BFRS and IFRS reporting reconcile to the same operational events the rest of Nexus runs on, so finance is not a separate version of the truth.</div></div>' +
+        var sc = scale();
+        var aging = [['0 to 30 days', 58], ['31 to 60', 24], ['61 to 90', 12], ['90+ (overdue)', 6]];
+        var cash = [['Receivables', Math.round(42000000 * sc), 'claimed'], ['Inventory', Math.round(28000000 * sc), 'claimed'], ['Payables', Math.round(-19000000 * sc), 'verified'], ['Net working capital', Math.round(51000000 * sc), '']];
+        return head('Finance', 'Revenue, cost and the working-capital pressure behind operations, on one operational ledger.') +
+          kpiRow([[money(Math.round(400000000 * sc), '$'), 'revenue, year', false], ['18%', 'EBITDA margin', false], ['47d', 'days sales outstanding', false], [money(Math.round(320000 * sc), '$'), 'receivables overdue', false]]) +
+          '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Working capital</div>' +
+          cash.map(function (c) { return '<div class="row" style="padding:8px 10px"><span class="m">' + esc(c[0]) + '</span><span style="display:flex;gap:8px;align-items:center"><span class="v">' + money(c[1], '$') + '</span>' + (c[2] ? '<span class="chip ' + c[2] + '"></span>' : '') + '</span></div>'; }).join('') + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Receivables aging</div>' +
+          aging.map(function (a) { return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px"><span>' + esc(a[0]) + '</span><span class="mono">' + a[1] + '%</span></div><div class="progress"><div class="fill ' + (a[0].indexOf('90') === 0 ? 'crit' : '') + '" style="width:' + a[1] + '%"></div></div></div>'; }).join('') +
+          '<div class="sub2" style="margin-top:8px">' + money(Math.round(320000 * sc), '$') + ' is 45 days overdue from a Middle East distributor, the main pressure this quarter.</div></div></div>' +
+          '<div class="card shadow" style="margin-top:16px"><div class="sub" style="font-size:13px">BFRS and IFRS reporting reconcile to the same operational events the rest of Nexus runs on, so finance is not a separate version of the truth. Cost per pack and margin are computed from real production and dispensing, not an allocation.</div></div>' +
           prov('finance reads the same events as operations; there is one ledger of reality');
       } },
 
@@ -538,9 +553,17 @@
     };
     return { label: m.label || '', suggestions: sMap[mod] || [] };
   }
+  function role() { return SESSION ? SESSION.role : 'coo'; }
   function irisAnswer(q) {
-    var s = q.toLowerCase(), t = totals(), m = moduleByKey(mod) || {}, agents = m.agents || ['Telos'];
+    var s = q.toLowerCase(), t = totals(), m = moduleByKey(mod) || {}, agents = m.agents || ['Telos'], r = role();
     function A(text, acts) { return { text: text, agents: agents, actions: acts || [] }; }
+    // Role-aware framing for the general "what needs me" query.
+    if (/what needs me|right now|my (day|priorities|desk)|brief/.test(s)) {
+      if (r === 'quality') return A(openDevs().length + ' deviations open, ' + deviations.filter(function (d) { return d.status === 'CAPA'; }).length + ' in CAPA. ' + (cold.breach ? 'A cold-chain breach is gating an OncoNex lot. ' : '') + 'Batch release conformance 98.7%, serialisation ' + serialPct().toFixed(1) + '%. The slow risk is the EU variation. A qualified person dispositions each batch.', [{ label: 'Open Quality', kind: 'evidence', q: 'what is still open?' }]);
+      if (r === 'regulatory') return A('The EU variation on CardiNex-10 is due in 46 days with two documents missing, the one filing at risk. US FDA annual report is coming, WHO PQ has open queries. Registrations in 60 of 62 markets are in good standing.', [{ label: 'Open Regulatory', kind: 'evidence', q: 'what is the EU filing risk?' }]);
+      if (r === 'cfo') return A('Working capital is the pressure: ' + money(Math.round(320000 * scale()), '$') + ' overdue from a Middle East distributor, DSO creeping. Revenue tracking to plan, EBITDA 18%. Live demand of ' + t.units + ' packs is worth ' + money(t.value, '$') + ' ex-factory this session.', [{ label: 'Open Finance', kind: 'evidence', q: 'working capital' }]);
+      return A('Operations: ' + t.units + ' packs pulled live worth ' + money(t.value, '$') + ', cover to ' + clockText() + ', ' + openDevs().length + ' open deviations' + (cold.breach ? ', a cold-chain breach to clear' : '') + '. The decisions are in Command. A licensed person signs each call.', [{ label: 'Open Command', kind: 'evidence', q: 'how long until stockout?' }]);
+    }
     if (/cold|chain|temp|breach|hold/.test(s)) {
       return A(cold.breach
         ? cold.product + ' on ' + cold.shipment + ' is reading ' + coldNow() + 'C, outside the 2 to 8 band. It has already raised a deviation in Quality and placed the lot on hold. My read: confirm the hold, notify the customer, open the QP review. A qualified person signs it.'
@@ -645,10 +668,13 @@
     return null;
   });
 
-  UI.iris.mount({
-    getContext: irisContext, answer: irisAnswer,
-    greeting: 'I am IRIS, Nexus\'s copilot. I read demand, the cold chain, quality, serialisation, the environment and the capital ask across every enabled module, and I show which specialists I consulted. I advise; a licensed person makes every clinical, quality and regulatory call. Ask me what needs you.'
-  });
+  function greetingFor(r) {
+    var tail = ' I show which specialists I consulted. I advise; a licensed person makes every quality and regulatory call.';
+    if (r === 'quality') return 'I am IRIS. I track deviations, CAPA, batch release and the cold chain for the plant.' + tail + ' Ask me what is open.';
+    if (r === 'regulatory') return 'I am IRIS. I watch registrations, variations and submissions across your markets.' + tail + ' Ask me what is at risk.';
+    if (r === 'cfo') return 'I am IRIS. I read working capital, receivables and the value of live demand against plan.' + tail + ' Ask me about the cash position.';
+    return 'I am IRIS, Nexus\'s copilot. I read demand, the cold chain, quality, serialisation and the capital ask across every enabled module.' + tail + ' Ask me what needs you.';
+  }
 
   window.QareAuth.boot({
     app: 'Nexus', product: 'nexus', sector: 'pharma',
@@ -660,6 +686,7 @@
     ],
     onReady: function (session) {
       SESSION = session;
+      UI.iris.mount({ getContext: irisContext, answer: irisAnswer, greeting: greetingFor(session.role) });
       seedBaseline(); foldExchange(); render(); setInterval(tick, 1000);
     }
   });
