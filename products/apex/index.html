@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Qäre Apex</title>
+<meta name="description" content="Apex, the operating system for hospitals and nursing homes. One element library, three facility profiles, every module wired to the HIE and the GIC." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -18,186 +19,418 @@
 (function () {
   var X = window.QareExchange, UI = window.QareUI, esc = UI.esc, money = UI.money;
   UI.init('apex');
-  var orgs = X.orgsFor('apex');
-  var cur = X.org('ORG-HOSPITAL');
+
+  /* ---------- facility profiles (the tenant lens for a facility OS) ---------- */
+  var PROFILES = [
+    { id: 'PROF-HOSP', name: 'Dhaka Tertiary Hospital', kind: 'Hospital', tag: 'ACUTE',
+      persona: { id: 'U-NAIMA', name: 'Dr. Naima Islam', role: 'Director of operations' },
+      cfg: { assessment: 'Acute care plan', payment: 'DRG, HRRP penalty', accred: 'Joint Commission', window: true, unitWord: 'ward' },
+      units: [ { name: 'General medicine', total: 60, occ: 51 }, { name: 'Surgery', total: 40, occ: 33 }, { name: 'Maternity', total: 30, occ: 27 }, { name: 'Paediatrics', total: 28, occ: 19 }, { name: 'ICU', total: 12, occ: 11 }, { name: 'Isolation', total: 10, occ: 3 } ] },
+    { id: 'PROF-SNF', name: 'Shetu Post-Acute Care', kind: 'Skilled Nursing', tag: 'POST-ACUTE',
+      persona: { id: 'U-SHAHANA', name: 'Shahana Akter', role: 'Administrator' },
+      cfg: { assessment: 'MDS 3.0, CMS schedule', payment: 'PDPM, SNF VBP', accred: 'CMS Five-Star', window: true, unitWord: 'unit' },
+      units: [ { name: 'Rehabilitation', total: 32, occ: 27 }, { name: 'Long-term care', total: 40, occ: 36 }, { name: 'Memory care', total: 18, occ: 15 } ] },
+    { id: 'PROF-RES', name: 'Prosanti Residential Care', kind: 'Residential Care', tag: 'ASSISTED',
+      persona: { id: 'U-RINA-H', name: 'Rina Haque', role: 'Care home manager' },
+      cfg: { assessment: 'ADL review', payment: 'Private pay', accred: 'State licensure', window: false, unitWord: 'wing' },
+      units: [ { name: 'Independent wing', total: 24, occ: 20 }, { name: 'Assisted wing', total: 28, occ: 25 }, { name: 'Respite', total: 8, occ: 3 } ] }
+  ];
+  var cur = PROFILES[0];
   var mod = 'command';
+  function profileById(id) { for (var i = 0; i < PROFILES.length; i++) if (PROFILES[i].id === id) return PROFILES[i]; return PROFILES[0]; }
+  function profileTabs() { return PROFILES.map(function (p) { return { id: p.id, name: p.name, sizeClass: p.tag }; }); }
 
-  function scale() { return cur.sizeClass === 'LARGE' ? 3 : cur.sizeClass === 'MEDIUM' ? 1 : 0.35; }
+  /* ---------- live state ---------- */
+  var discharges = [], incidents = [], staffRoster = [], tickN = 0, acc = 0;
+  function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
 
-  var WARDS = [
-    { name: 'General medicine', total: 60, occ: 51 },
-    { name: 'Surgery', total: 40, occ: 33 },
-    { name: 'Maternity', total: 30, occ: 27 },
-    { name: 'Paediatrics', total: 28, occ: 19 },
-    { name: 'ICU', total: 12, occ: 11 },
-    { name: 'Isolation', total: 10, occ: 3 }
-  ];
-  var THEATRE = [
-    { time: '08:00', proc: 'Caesarean section', surgeon: 'Dr. Ara', theatre: 'OT-1', status: 'In theatre' },
-    { time: '09:30', proc: 'Appendectomy', surgeon: 'Dr. Rahman', theatre: 'OT-2', status: 'Scheduled' },
-    { time: '11:00', proc: 'ORIF femur', surgeon: 'Dr. Sen', theatre: 'OT-1', status: 'Delayed' },
-    { time: '13:00', proc: 'Cataract', surgeon: 'Dr. Noor', theatre: 'OT-3', status: 'Scheduled' }
-  ];
-  var TRIAGE = [
-    { pt: 'Unknown male, ~40', cat: 'Red', complaint: 'Chest pain, diaphoretic', wait: '0 min' },
-    { pt: 'F. Akter, 28', cat: 'Yellow', complaint: 'High fever, 3 days', wait: '18 min' },
-    { pt: 'Child, 6', cat: 'Yellow', complaint: 'Dehydration', wait: '22 min' },
-    { pt: 'M. Islam, 54', cat: 'Green', complaint: 'Laceration, stable', wait: '40 min' }
-  ];
-  var STOCK = [
-    { item: 'Oxygen cylinders', onHand: 22, par: 30, status: 'low' },
-    { item: 'IV fluids (NS)', onHand: 310, par: 200, status: 'ok' },
-    { item: 'Blood (O-)', onHand: 4, par: 10, status: 'low' },
-    { item: 'Insulin', onHand: 85, par: 60, status: 'ok' }
-  ];
-  var INCIDENTS = [
-    { id: 'INC-204', type: 'Medication near-miss', ward: 'General medicine', sev: 'Moderate', status: 'Investigating' },
-    { id: 'INC-205', type: 'Patient fall', ward: 'Surgery', sev: 'Minor', status: 'Closed' }
-  ];
+  function seedState() {
+    var now = Date.now(), d = 86400000;
+    discharges = [
+      { id: 'DC-241', patient: 'A. Khan', at: now - 24 * d, risk: 'low', status: 'in-window', to: 'Union Health Outreach' },
+      { id: 'DC-242', patient: 'R. Begum', at: now - 11 * d, risk: 'rising', status: 'in-window', to: 'Sylhet CHW Program' },
+      { id: 'DC-243', patient: 'M. Das', at: now - 3 * d, risk: 'high', status: 'in-window', to: 'Union Health Outreach' },
+      { id: 'DC-240', patient: 'S. Roy', at: now - 31 * d, risk: 'low', status: 'cleared', to: 'National CHW Corps' },
+      { id: 'DC-239', patient: 'T. Islam', at: now - 33 * d, risk: 'low', status: 'cleared', to: 'Sylhet CHW Program' }
+    ];
+    incidents = [
+      { id: 'INC-204', type: 'Medication near-miss', unit: 'General medicine', sev: 'Moderate', status: 'Investigating' },
+      { id: 'INC-205', type: 'Patient fall', unit: 'Rehabilitation', sev: 'Minor', status: 'Closed' }
+    ];
+    staffRoster = [
+      { shift: 'Day', nurses: 42, patients: 148, ratio: '1:3.5', status: cur.kind === 'Skilled Nursing' ? 'ok' : 'ok' },
+      { shift: 'Evening', nurses: 31, patients: 150, ratio: '1:4.8', status: 'warn' },
+      { shift: 'Night', nurses: 22, patients: 150, ratio: '1:6.8', status: 'warn' }
+    ];
+    acc = 0;
+  }
+  function dayIn(dc) { return Math.min(30, Math.floor((Date.now() + acc - dc.at) / 86400000)); }
+  function readmitted() { return discharges.filter(function (d) { return d.status === 'readmitted'; }).length; }
+  function avoided() { return discharges.filter(function (d) { return d.status === 'cleared'; }).length; }
+  function inWindow() { return discharges.filter(function (d) { return d.status === 'in-window'; }); }
+  function readmitRate() { var t = discharges.length; return t ? (readmitted() / t * 100) : 0; }
 
-  var MODS = [
-    { key: 'command', label: 'Command', ic: 'CM', group: 'Today' },
-    { key: 'intake', label: 'Referral intake', ic: 'RI', group: 'Today' },
-    { key: 'emergency', label: 'Emergency', ic: 'ER', group: 'Today' },
-    { key: 'beds', label: 'Beds and wards', ic: 'BW', group: 'Operations' },
-    { key: 'theatre', label: 'Theatre', ic: 'OT', group: 'Operations' },
-    { key: 'census', label: 'Patient census', ic: 'PC', group: 'Operations' },
-    { key: 'pharmacy', label: 'Pharmacy and stock', ic: 'PH', group: 'Operations' },
-    { key: 'billing', label: 'Billing', ic: 'BL', group: 'Back office' },
-    { key: 'quality', label: 'Quality and incidents', ic: 'QI', group: 'Oversight' },
-    { key: 'impact', label: 'Impact and GIC', ic: 'IM', group: 'Oversight' }
-  ];
-
-  function head(t, d) { return '<div class="sec-head"><div><div class="t">' + esc(t) + '</div><div class="d">' + esc(d) + '</div></div></div>'; }
-  function kpis(arr) { return '<div class="figs" style="margin-bottom:16px">' + arr.map(function (a) { return '<div class="fig"><div class="fv">' + esc(a[0]) + '</div><div class="fk">' + esc(a[1]) + '</div></div>'; }).join('') + '</div>'; }
-  function prov(t) { return '<p class="provenance">' + esc(t) + '</p>'; }
-  function catChip(c) { var m = { Red: 'inconsistent', Yellow: 'claimed', Green: 'verified' }; return '<span class="chip ' + m[c] + '">' + esc(c) + '</span>'; }
-
+  function beds() { var t = 0, o = 0; cur.units.forEach(function (u) { t += u.total; o += u.occ; }); o += X.admissions().filter(function (a) { return a.orgId === cur.id; }).length; return { total: t, occ: Math.min(t, o) }; }
   function incoming() { var admitted = X.admissions().map(function (a) { return a.household; }); return X.referrals().filter(function (r) { return admitted.indexOf(r.household) < 0; }); }
 
-  function moduleBody() {
-    var inc = incoming();
-    var bedsTotal = WARDS.reduce(function (a, w) { return a + w.total; }, 0);
-    var bedsOcc = WARDS.reduce(function (a, w) { return a + w.occ; }, 0) + X.admissions().length;
-    if (mod === 'command') {
-      return head('Command', 'What needs the hospital now. Each line is one action. Referrals arrive live from community workers in Bridge.') +
-        kpis([[bedsOcc + '/' + bedsTotal, 'beds occupied'], [inc.length, 'referrals waiting'], ['1', 'red in ED'], [THEATRE.filter(function (t) { return t.status === 'Delayed'; }).length, 'theatre delays']]) +
-        '<div class="split"><div>' +
-        card('Needs you', (inc.length ? inc.slice().reverse().map(function (r) {
-          return row('<span class="sev warn"></span>Referral: ' + esc(r.patientName), esc(r.village) + ' &middot; ' + esc(r.reason), '<button class="btn btn-primary btn-sm" data-admit="' + esc(r.household) + '">Admit</button>');
-        }).join('') : '') +
-          row('<span class="sev crit"></span>Red triage in Emergency', 'Chest pain, unassigned bed', '<button class="btn btn-ghost btn-sm" data-mod="emergency">Open ED</button>') +
-          row('<span class="sev warn"></span>ORIF femur delayed', 'OT-1 running over, 11:00 case', '<button class="btn btn-ghost btn-sm" data-mod="theatre">Theatre</button>') +
-          row('<span class="sev warn"></span>Blood O- below par', '4 units on hand, par 10', '<button class="btn btn-ghost btn-sm" data-mod="pharmacy">Stock</button>')) +
-        '</div><div>' +
-        card('IRIS briefing', '<div class="sub" style="font-size:13px">Occupancy is ' + Math.round(bedsOcc / bedsTotal * 100) + '%. ICU is effectively full at 11 of 12. Two community referrals are waiting on a bed; both are maternity, where you have 3 free. Clear the ORIF delay or the afternoon list slips. A licensed clinician makes every call.</div>') +
-        '</div></div>' + prov('reads referrals, admissions and the floor state from the exchange; posts nothing itself');
-    }
-    if (mod === 'intake') {
-      return head('Referral intake', 'Community referrals from Bridge, with the field screening attached. Admit or redirect.') +
-        (inc.length ? '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>From</th><th>Reason</th><th>Screening</th><th></th></tr></thead><tbody>' +
-          inc.slice().reverse().map(function (r) {
-            return '<tr><td class="nm">' + esc(r.patientName) + '</td><td>' + esc(r.village) + '</td><td>' + esc(r.reason) + '</td><td><span class="chip claimed">field-screened</span></td><td style="text-align:right"><button class="btn btn-primary btn-sm" data-admit="' + esc(r.household) + '">Admit</button></td></tr>';
-          }).join('') + '</tbody></table></div>' : '<div class="card"><div class="sub">No referrals waiting. Open Bridge in another tab and refer a household; it appears here live.</div></div>') +
-        prov('REFERRAL events from Bridge; admitting writes an ADMISSION back to the exchange');
-    }
-    if (mod === 'emergency') {
-      return head('Emergency', 'Triage board, most acute first. Red is seen immediately.') +
-        kpis([['1', 'red'], ['2', 'yellow'], ['1', 'green'], ['14 min', 'median wait']]) +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>Category</th><th>Complaint</th><th>Waiting</th><th></th></tr></thead><tbody>' +
-        TRIAGE.map(function (t) { return '<tr><td class="nm">' + esc(t.pt) + '</td><td>' + catChip(t.cat) + '</td><td>' + esc(t.complaint) + '</td><td class="mono">' + esc(t.wait) + '</td><td style="text-align:right"><button class="btn btn-ghost btn-sm">Assign bed</button></td></tr>'; }).join('') +
-        '</tbody></table></div>' + prov('triage category drives the queue order, not arrival time');
-    }
-    if (mod === 'beds') {
-      return head('Beds and wards', 'Live occupancy by ward. Each square is a bed.') +
-        kpis([[bedsOcc + '/' + bedsTotal, 'occupied'], [Math.round(bedsOcc / bedsTotal * 100) + '%', 'occupancy'], [bedsTotal - bedsOcc, 'free'], ['2', 'blocked']]) +
-        '<div class="cards3">' + WARDS.map(function (w) {
-          var free = w.total - w.occ;
-          return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="font-size:14px">' + esc(w.name) + '</strong><span class="mono" style="font-size:12px">' + w.occ + '/' + w.total + '</span></div>' +
-            '<div class="wardgrid">' + Array.apply(null, { length: w.total }).map(function (_, i) { return '<span class="bed ' + (i < w.occ ? 'occ' : (i === w.occ && free <= 2 ? 'free' : 'free')) + '"></span>'; }).join('') + '</div>' +
-            '<div class="sub2" style="margin-top:8px;font-size:11px;color:var(--mid)">' + free + ' free</div></div>';
-        }).join('') + '</div>' + prov('occupancy includes live admissions from the exchange');
-    }
-    if (mod === 'theatre') {
-      return head('Theatre', 'Today\'s operating schedule across three theatres.') +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Time</th><th>Procedure</th><th>Surgeon</th><th>Theatre</th><th>Status</th></tr></thead><tbody>' +
-        THEATRE.map(function (t) { var c = t.status === 'Delayed' ? 'inconsistent' : t.status === 'In theatre' ? 'claimed' : ''; return '<tr><td class="mono">' + esc(t.time) + '</td><td class="nm">' + esc(t.proc) + '</td><td>' + esc(t.surgeon) + '</td><td class="mono">' + esc(t.theatre) + '</td><td><span class="chip ' + c + '">' + esc(t.status) + '</span></td></tr>'; }).join('') +
-        '</tbody></table></div>' + prov('a delay cascades to every later case in the same theatre');
-    }
-    if (mod === 'census') {
-      var n = Math.round(420 * scale());
-      return head('Patient census', 'Inpatients by ward with length of stay and the responsible team.') +
-        kpis([[n, 'inpatients'], ['4.2d', 'mean LOS'], ['12', 'discharges today'], ['3', 'awaiting discharge']]) +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>Ward</th><th>Admitted</th><th>LOS</th><th>Team</th><th>Status</th></tr></thead><tbody>' +
-        [['R. Begum', 'Maternity', '14 Oct', '2d', 'Obstetrics', 'Stable'], ['A. Khan', 'General medicine', '12 Oct', '4d', 'Medicine', 'Improving'], ['S. Roy', 'ICU', '11 Oct', '5d', 'Critical care', 'Critical'], ['T. Islam', 'Surgery', '15 Oct', '1d', 'Surgery', 'Post-op']].map(function (r) {
-          return '<tr><td class="nm">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="mono">' + esc(r[2]) + '</td><td class="mono">' + esc(r[3]) + '</td><td>' + esc(r[4]) + '</td><td>' + (r[5] === 'Critical' ? '<span class="chip inconsistent">Critical</span>' : '<span class="chip verified">' + esc(r[5]) + '</span>') + '</td></tr>';
-        }).join('') + '</tbody></table></div>' + prov('every inpatient reads from and writes to the shared record');
-    }
-    if (mod === 'pharmacy') {
-      return head('Pharmacy and stock', 'Hospital formulary stock against par levels. Two lines need action.') +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Item</th><th class="num">On hand</th><th class="num">Par</th><th>Status</th><th></th></tr></thead><tbody>' +
-        STOCK.map(function (s) { return '<tr><td class="nm">' + esc(s.item) + '</td><td class="num">' + s.onHand + '</td><td class="num">' + s.par + '</td><td>' + (s.status === 'low' ? '<span class="chip inconsistent">below par</span>' : '<span class="chip verified">ok</span>') + '</td><td style="text-align:right">' + (s.status === 'low' ? '<button class="btn btn-primary btn-sm">Requisition</button>' : '') + '</td></tr>'; }).join('') +
-        '</tbody></table></div>' + prov('a requisition can route to Relay for serialised, cold-chain-aware delivery');
-    }
-    if (mod === 'billing') {
-      return head('Billing', 'Accounts and out-of-pocket exposure. Claims route to the payer in Shield against the record.') +
-        kpis([[money(Math.round(84000 * scale())), 'billed today'], ['31%', 'out of pocket'], ['18', 'claims to payer'], [money(Math.round(12400 * scale())), 'written off']]) +
-        '<div class="card shadow"><div class="sub" style="font-size:13px">Out-of-pocket share is the EESG affordability signal, flagged Inconsistent until the payer reconciliation in Shield closes. The hospital cannot upgrade it by assertion; a matched claim does.</div></div>' +
-        prov('claims are adjudicated in Shield against real dispensing and admission events');
-    }
-    if (mod === 'quality') {
-      return head('Quality and incidents', 'Clinical incidents and the open investigations behind them.') +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Incident</th><th>Type</th><th>Ward</th><th>Severity</th><th>Status</th></tr></thead><tbody>' +
-        INCIDENTS.map(function (i) { return '<tr><td class="mono">' + esc(i.id) + '</td><td class="nm">' + esc(i.type) + '</td><td>' + esc(i.ward) + '</td><td>' + (i.sev === 'Moderate' ? '<span class="chip claimed">Moderate</span>' : '<span class="chip">Minor</span>') + '</td><td>' + (i.status === 'Closed' ? '<span class="chip verified">Closed</span>' : '<span class="chip claimed">' + esc(i.status) + '</span>') + '</td></tr>'; }).join('') +
-        '</tbody></table></div>' + prov('incidents feed the care-quality front of the impact framework');
-    }
-    if (mod === 'impact') {
-      return head('Impact and GIC', 'The hospital\'s contribution to the EESG Health Impact framework, and its verified publication to the Commons.') +
-        UI.impactPanel(cur, { measures: [
-          { front: 'Access and coverage', measure: 'Admissions, quarter', value: String(Math.round(4820 * scale())), status: 'Verified' },
-          { front: 'Care quality and safety', measure: 'Readmission rate', value: '6.1%', status: 'Claimed' },
-          { front: 'Affordability and financial protection', measure: 'Out-of-pocket share', value: '31%', status: 'Inconsistent' }
-        ] });
-    }
-    return '';
-  }
-
+  /* ---------- small view helpers ---------- */
+  function head(t, d) { return '<div class="sec-head"><div><div class="t">' + esc(t) + '</div><div class="d">' + esc(d) + '</div></div><div class="actions"><span class="band"><span class="livedot"></span>one exchange, live</span></div></div>'; }
+  function prov(t) { return '<p class="provenance">' + esc(t) + '</p>'; }
+  function kpiRow(items) { return '<div class="figs" style="margin-bottom:16px">' + items.map(function (a) { return '<div class="fig"><div class="fv"' + (a[2] ? ' id="' + a[2] + '"' : '') + '>' + a[0] + '</div><div class="fk">' + esc(a[1]) + '</div></div>'; }).join('') + '</div>'; }
   function card(title, inner) { return '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;font-size:14px;margin-bottom:10px">' + esc(title) + '</div>' + inner + '</div>'; }
   function row(left, sub, action) { return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--hairline)"><div><div style="font-size:13px;font-weight:600">' + left + '</div><div class="sub2" style="margin-left:16px">' + sub + '</div></div>' + (action || '') + '</div>'; }
+  function riskChip(r) { var m = { low: 'verified', rising: 'claimed', high: 'inconsistent' }; return '<span class="chip ' + m[r] + '">' + esc(r) + ' risk</span>'; }
+  function railChips(m) { var r = m.rails || {}; return '<span class="rails"><span class="rail exch ' + (r.hie ? 'on' : '') + '">HIE</span><span class="rail eesg ' + ((r.eesg && r.eesg.length) ? 'on' : '') + '">EESG</span><span class="rail gic ' + (r.gic ? 'on' : '') + '">GIC</span></span>'; }
 
-  function render() {
-    var who = cur.personas[0];
-    var inc = incoming().length;
-    var mods = MODS.map(function (m) { return m.key === 'intake' ? Object.assign({}, m, { badge: inc || null }) : m; });
-    document.getElementById('root').innerHTML =
-      UI.topbar({ appName: 'Apex', personaName: who.name, personaRole: who.role + ' · ' + cur.name }) +
-      '<div class="os">' + UI.osNav(mods, mod) +
-        '<main class="os-main">' + UI.tenantBar(orgs, cur.id) + '<div style="margin-top:16px">' + moduleBody() + '</div></main>' +
-      '</div>';
+  function transitionRows() {
+    var w = cur.cfg.window;
+    if (!w) return '<div class="sub">This profile does not run a 30-day readmission window.</div>';
+    return inWindow().concat(discharges.filter(function (d) { return d.status !== 'in-window'; })).map(function (dc) {
+      var day = dayIn(dc), pct = day / 30 * 100;
+      var fill = dc.status === 'readmitted' ? 'crit' : dc.status === 'cleared' ? 'ok' : dc.risk === 'high' ? 'crit' : dc.risk === 'rising' ? 'warn' : '';
+      return '<div style="padding:11px 0;border-bottom:1px solid var(--hairline)"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+        '<div><span style="font-weight:600;font-size:13px">' + esc(dc.patient) + '</span> <span class="sub2">to ' + esc(dc.to) + '</span></div>' +
+        (dc.status === 'in-window' ? riskChip(dc.risk) : dc.status === 'cleared' ? '<span class="chip verified">readmission avoided</span>' : '<span class="chip inconsistent">readmitted</span>') + '</div>' +
+        '<div class="progress"><div class="fill ' + fill + '" style="width:' + pct + '%"></div></div>' +
+        '<div style="display:flex;justify-content:space-between;margin-top:5px"><span class="band">day ' + day + ' of 30</span>' +
+        (dc.status === 'in-window' ? '<span style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" data-decline="' + dc.id + '">Flag decline</button><button class="btn btn-ghost btn-sm" data-clear="' + dc.id + '">Mark recovered</button></span>' : '<span class="band mono">' + dc.id + '</span>') +
+        '</div></div>';
+    }).join('');
   }
 
+  /* ================= element library ================= */
+  var MODULES = [
+    { key: 'command', label: 'Command', ic: 'CM', group: 'Today', core: true, desc: 'The operating surface across the facility.',
+      rails: { hie: ['REFERRAL', 'ADMISSION', 'DISCHARGE'], eesg: [], gic: false }, agents: ['Flow', 'Quality', 'Clinical'],
+      render: function () {
+        var b = beds(), inc = incoming();
+        return head('Command', 'What needs the facility now. Referrals arrive live from Bridge; the 30-day clock runs in Transitions.') +
+          kpiRow([[b.occ + '/' + b.total, 'beds occupied', 'k-beds'], [inc.length, 'referrals waiting', 'k-ref'], [inWindow().filter(function (d) { return d.risk === 'high'; }).length, 'high readmission risk', 'k-risk'], [readmitRate().toFixed(1) + '%', '30-day readmission', 'k-rr']]) +
+          '<div class="split"><div>' + card('Needs you',
+            (inc.length ? inc.slice().reverse().map(function (r) { return row('<span class="sev warn"></span>Referral: ' + esc(r.patientName), esc(r.village) + ' &middot; ' + esc(r.reason), '<button class="btn btn-primary btn-sm" data-admit="' + esc(r.household) + '">Admit</button>'); }).join('') : '') +
+            (inWindow().filter(function (d) { return d.risk === 'high'; }).map(function (d) { return row('<span class="sev crit"></span>High readmission risk: ' + esc(d.patient), 'day ' + dayIn(d) + ' of 30, home health flagged a decline', '<button class="btn btn-ghost btn-sm" data-mod="transitions">Transitions</button>'); }).join('')) +
+            row('<span class="sev warn"></span>Night staffing thin', '1:6.8 nurse ratio, below target', '<button class="btn btn-ghost btn-sm" data-mod="staffing">Staffing</button>')) +
+          '</div><div>' + card('IRIS briefing', '<div class="sub" style="font-size:13px">Occupancy is ' + Math.round(b.occ / b.total * 100) + '%. ' + inWindow().length + ' discharges are inside the 30-day window, ' + inWindow().filter(function (d) { return d.risk === 'high'; }).length + ' at high risk. The high-risk one should route back here, not the ED, if it declines. ' + avoided() + ' readmissions avoided this period are verified impact on the Commons. A licensed clinician makes every call.</div>') + '</div></div>' +
+          prov('reads referrals, admissions, discharges and the floor state from the HIE; posts nothing itself');
+      } },
+
+    { key: 'intake', label: 'Referral intake', ic: 'RI', group: 'Today', desc: 'Community referrals from Bridge. Admit or redirect.',
+      rails: { hie: ['REFERRAL', 'ADMISSION'], eesg: [{ pillar: 'Social', front: 'Access and coverage', measure: 'Referrals accepted, quarter', value: '1,240', status: 'Verified' }], gic: true }, agents: ['Flow', 'Clinical'],
+      render: function () {
+        var inc = incoming();
+        return head('Referral intake', 'Community referrals from Bridge, field screening attached.') +
+          (inc.length ? '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>From</th><th>Reason</th><th>Screening</th><th></th></tr></thead><tbody>' +
+            inc.slice().reverse().map(function (r) { return '<tr><td class="nm">' + esc(r.patientName) + '</td><td>' + esc(r.village) + '</td><td>' + esc(r.reason) + '</td><td><span class="chip claimed">field-screened</span></td><td style="text-align:right"><button class="btn btn-primary btn-sm" data-admit="' + esc(r.household) + '">Admit</button></td></tr>'; }).join('') + '</tbody></table></div>'
+            : '<div class="card"><div class="sub">No referrals waiting. Open Bridge in another tab and refer a household; it appears here live.</div></div>') +
+          prov('REFERRAL events from Bridge; admitting writes an ADMISSION back to the HIE');
+      } },
+
+    { key: 'flow', label: 'Patient flow', ic: 'PF', group: 'Today', desc: 'Live occupancy and census by unit.',
+      rails: { hie: ['ADMISSION', 'DISCHARGE'], eesg: [{ pillar: 'Social', front: 'Access and coverage', measure: 'Bed occupancy', valueFn: function () { var b = beds(); return Math.round(b.occ / b.total * 100) + '%'; }, status: 'Verified' }], gic: false }, agents: ['Flow', 'Clinical'],
+      render: function () {
+        var b = beds();
+        return head('Patient flow', 'Live occupancy by ' + cur.cfg.unitWord + '. Each square is a bed. Discharge frees a bed and starts the 30-day clock.') +
+          kpiRow([[b.occ + '/' + b.total, 'occupied', 'k-beds'], [Math.round(b.occ / b.total * 100) + '%', 'occupancy'], [b.total - b.occ, 'free'], [inWindow().length, 'in discharge window']]) +
+          '<div class="cards3">' + cur.units.map(function (u) {
+            return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="font-size:14px">' + esc(u.name) + '</strong><span class="mono" style="font-size:12px">' + u.occ + '/' + u.total + '</span></div>' +
+              '<div class="wardgrid">' + Array.apply(null, { length: u.total }).map(function (_, i) { return '<span class="bed ' + (i < u.occ ? 'occ' : 'free') + '"></span>'; }).join('') + '</div>' +
+              '<div class="sub2" style="margin-top:8px;font-size:11px">' + (u.total - u.occ) + ' free</div></div>';
+          }).join('') + '</div>' +
+          card('Ready for discharge', [['A. Khan', 'General medicine', '4d'], ['R. Begum', cur.units[0].name, '2d'], ['T. Islam', cur.units[0].name, '1d']].map(function (r) {
+            return row('<span class="sev ok"></span>' + esc(r[0]), esc(r[1]) + ' &middot; LOS ' + esc(r[2]), '<button class="btn btn-primary btn-sm" data-discharge="' + esc(r[0]) + '">Discharge</button>');
+          }).join('')) +
+          prov('occupancy includes live admissions from the HIE; discharge writes back to it');
+      } },
+
+    { key: 'emergency', label: 'Emergency', ic: 'ER', group: 'Today', desc: 'Triage board, most acute first.',
+      rails: { hie: ['ADMISSION'], eesg: [{ pillar: 'Social', front: 'Access and coverage', measure: 'ED median wait', value: '14 min', status: 'Claimed' }], gic: false }, agents: ['Emergency', 'Flow'],
+      render: function () {
+        var T = [['Unknown male, ~40', 'Red', 'Chest pain, diaphoretic', '0 min'], ['F. Akter, 28', 'Yellow', 'High fever, 3 days', '18 min'], ['Child, 6', 'Yellow', 'Dehydration', '22 min'], ['M. Islam, 54', 'Green', 'Laceration, stable', '40 min']];
+        var cat = { Red: 'inconsistent', Yellow: 'claimed', Green: 'verified' };
+        return head('Emergency', 'Triage board, most acute first. Red is seen immediately.') +
+          kpiRow([['1', 'red'], ['2', 'yellow'], ['1', 'green'], ['14 min', 'median wait']]) +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>Category</th><th>Complaint</th><th>Waiting</th></tr></thead><tbody>' +
+          T.map(function (t) { return '<tr><td class="nm">' + esc(t[0]) + '</td><td><span class="chip ' + cat[t[1]] + '">' + esc(t[1]) + '</span></td><td>' + esc(t[2]) + '</td><td class="mono">' + esc(t[3]) + '</td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('triage category drives the queue order, not arrival time');
+      } },
+
+    { key: 'theatre', label: 'Theatre', ic: 'OT', group: 'Today', desc: 'Operating schedule across theatres.',
+      rails: { hie: [], eesg: [{ pillar: 'Social', front: 'Care quality and safety', measure: 'Theatre utilisation', value: '78%', status: 'Claimed' }], gic: false }, agents: ['Surgery', 'Flow'],
+      render: function () {
+        var TH = [['08:00', 'Caesarean section', 'Dr. Ara', 'OT-1', 'In theatre'], ['09:30', 'Appendectomy', 'Dr. Rahman', 'OT-2', 'Scheduled'], ['11:00', 'ORIF femur', 'Dr. Sen', 'OT-1', 'Delayed'], ['13:00', 'Cataract', 'Dr. Noor', 'OT-3', 'Scheduled']];
+        return head('Theatre', 'Today\'s operating schedule across three theatres.') +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Time</th><th>Procedure</th><th>Surgeon</th><th>Theatre</th><th>Status</th></tr></thead><tbody>' +
+          TH.map(function (t) { var c = t[4] === 'Delayed' ? 'inconsistent' : t[4] === 'In theatre' ? 'claimed' : 'verified'; return '<tr><td class="mono">' + esc(t[0]) + '</td><td class="nm">' + esc(t[1]) + '</td><td>' + esc(t[2]) + '</td><td class="mono">' + esc(t[3]) + '</td><td><span class="chip ' + c + '">' + esc(t[4]) + '</span></td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('a delay cascades to every later case in the same theatre');
+      } },
+
+    { key: 'transitions', label: 'Discharge & transitions', ic: 'DT', group: 'Today', desc: 'The 30-day readmission window. The flagship flow.',
+      rails: { hie: ['DISCHARGE', 'REFERRAL', 'READMIT'], eesg: [{ pillar: 'Social', front: 'Care quality and safety', measure: '30-day readmission rate', valueFn: function () { return readmitRate().toFixed(1) + '%'; }, statusFn: function () { return readmitRate() > 10 ? 'Inconsistent' : 'Verified'; } }], gic: true }, agents: ['Transitions', 'Clinical', 'Community'],
+      render: function () {
+        if (!cur.cfg.window) return head('Discharge & transitions', 'Care transitions for this profile.') + '<div class="card"><div class="sub">Residential Care does not run a 30-day readmission window. Transitions here are moves to higher levels of care.</div></div>' + prov('the window applies to acute and post-acute profiles');
+        return head('Discharge & transitions', 'A discharge writes to the HIE: a home-health referral, a transport job, a patient record update, and a 30-day clock. An avoided readmission is verified impact.') +
+          kpiRow([[inWindow().length, 'in 30-day window', 'k-inwin'], [avoided(), 'readmissions avoided', 'k-avoid'], [readmitRate().toFixed(1) + '%', '30-day rate', 'k-rr'], [inWindow().filter(function (d) { return d.risk === 'high'; }).length, 'high risk now', 'k-risk']]) +
+          '<div class="pitch"><div class="k">The flagship flow</div><div class="l">Discharge propagates across the ecosystem through the HIE. A decline inside the window routes the patient back here, not the ED.</div></div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Patients in the window</div><div id="ap-trans">' + transitionRows() + '</div></div>' +
+          prov('DISCHARGE and REFERRAL events propagate to Bridge, Relay and Nova; a cleared window is a readmission-reduction outcome for the GIC');
+      } },
+
+    { key: 'staffing', label: 'Staffing & roster', ic: 'SF', group: 'Operations', desc: 'Nurse-to-patient ratios, the Five-Star measure.',
+      rails: { hie: [], eesg: [{ pillar: 'Social', front: 'Care quality and safety', measure: 'Nurse-to-patient ratio, peak', value: '1:6.8', status: 'Inconsistent' }], gic: false }, agents: ['Staffing', 'Quality'],
+      render: function () {
+        return head('Staffing & roster', 'Nurse-to-patient ratios by shift. For a nursing facility this is the Five-Star staffing measure.') +
+          kpiRow([['95', 'nurses rostered'], ['1:4.8', 'mean ratio'], ['1:6.8', 'night ratio'], ['8%', 'agency use']]) +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Shift</th><th class="num">Nurses</th><th class="num">Patients</th><th>Ratio</th><th>Status</th></tr></thead><tbody>' +
+          staffRoster.map(function (s) { return '<tr><td class="nm">' + esc(s.shift) + '</td><td class="num">' + s.nurses + '</td><td class="num">' + s.patients + '</td><td class="mono">' + esc(s.ratio) + '</td><td>' + (s.status === 'warn' ? '<span class="chip claimed">below target</span>' : '<span class="chip verified">ok</span>') + '</td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('the staffing ratio is an EESG care-quality measure, and for a SNF it drives the Five-Star rating');
+      } },
+
+    { key: 'quality', label: 'Clinical quality & safety', ic: 'QS', group: 'Assure', desc: 'Readmissions, HAIs, falls, pressure injuries, incidents.',
+      rails: { hie: ['READMIT'], eesg: [ { pillar: 'Social', front: 'Care quality and safety', measure: 'Healthcare-associated infection rate', value: '1.9%', status: 'Verified' }, { pillar: 'Social', front: 'Care quality and safety', measure: 'Falls per 1k bed-days', value: '2.4', status: 'Claimed' } ], gic: true }, agents: ['Quality', 'Infection control', 'Clinical'],
+      render: function () {
+        return head('Clinical quality & safety', 'The safety measures that gate care quality and feed the framework.') +
+          kpiRow([[readmitRate().toFixed(1) + '%', '30-day readmission', 'k-rr'], ['1.9%', 'HAI rate'], ['2.4', 'falls / 1k bed-days'], [incidents.filter(function (i) { return i.status !== 'Closed'; }).length, 'open incidents']]) +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Incident</th><th>Type</th><th>Unit</th><th>Severity</th><th>Status</th></tr></thead><tbody>' +
+          incidents.map(function (i) { return '<tr><td class="mono">' + esc(i.id) + '</td><td class="nm">' + esc(i.type) + '</td><td>' + esc(i.unit) + '</td><td>' + (i.sev === 'Moderate' ? '<span class="chip claimed">Moderate</span>' : '<span class="chip">Minor</span>') + '</td><td>' + (i.status === 'Closed' ? '<span class="chip verified">Closed</span>' : '<span class="chip claimed">' + esc(i.status) + '</span>') + '</td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('readmissions, HAIs and falls are the care-quality front of the EESG framework');
+      } },
+
+    { key: 'medication', label: 'Medication safety', ic: 'MS', group: 'Assure', desc: 'Medication administration and adverse drug events.',
+      rails: { hie: ['RX_DISPENSED'], eesg: [{ pillar: 'Governance', front: 'Supply integrity and pharmacovigilance', measure: 'Medication error rate', value: '0.4%', status: 'Verified' }], gic: false }, agents: ['Pharmacy', 'Quality'],
+      render: function () {
+        return head('Medication safety', 'Administration accuracy and adverse drug events, reconciled with the pharmacy record in Cura.') +
+          kpiRow([['0.4%', 'med error rate'], ['3', 'ADEs, 30d'], ['99.1%', 'reconciliation'], ['2', 'high-alert holds']]) +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">Medication administration reconciles against the dispensing record in Cura over the HIE, so an error rate here is measured against real dispensing, not self-reported. A pharmacist reviews every high-alert hold.</div></div>' +
+          prov('reconciles against Cura dispensing events on the HIE');
+      } },
+
+    { key: 'accreditation', label: 'Accreditation & survey', ic: 'AC', group: 'Assure', desc: 'Accreditation standing and survey readiness.',
+      rails: { hie: [], eesg: [{ pillar: 'Governance', front: 'Care quality and safety', measure: 'Accreditation standing', value: 'in good standing', status: 'Verified' }], gic: false }, agents: ['Compliance', 'Quality'],
+      render: function () {
+        var rows = cur.kind === 'Hospital' ? [['Joint Commission', 'Accredited', 'triennial survey, 14 months'], ['Fire safety', 'Compliant', 'annual drill due'], ['Infection control', 'Compliant', 'none']]
+          : cur.kind === 'Skilled Nursing' ? [['CMS Five-Star', '4 stars', 'staffing star limiting'], ['State survey', 'No deficiencies', 'next window open'], ['MDS submission', 'Current', 'on CMS schedule']]
+          : [['State licensure', 'Licensed', 'renewal in 9 months'], ['Fire safety', 'Compliant', 'none'], ['Food safety', 'Compliant', 'inspection passed']];
+        return head('Accreditation & survey', cur.cfg.accred + ' readiness and the obligations behind it.') +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Standard</th><th>Status</th><th>Next action</th></tr></thead><tbody>' +
+          rows.map(function (r) { var c = /Accredited|No deficiencies|Compliant|Licensed|Current|stars/.test(r[1]) ? 'verified' : 'claimed'; return '<tr><td class="nm">' + esc(r[0]) + '</td><td><span class="chip ' + c + '">' + esc(r[1]) + '</span></td><td class="sub2">' + esc(r[2]) + '</td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('accreditation obligations are tracked live, by the standard this profile answers to');
+      } },
+
+    { key: 'orders', label: 'Orders & results', ic: 'OR', group: 'Clinical', desc: 'Lab and imaging orders and results from Prism.',
+      rails: { hie: ['LAB_RESULT'], eesg: [], gic: false }, agents: ['Clinical', 'Laboratory'],
+      render: function () {
+        var labs = X.labResults();
+        return head('Orders & results', 'Lab and imaging orders and their results, returned from Prism over the HIE.') +
+          (labs.length ? '<div class="qt-wrap"><table class="qt"><thead><tr><th>Test</th><th>Result</th><th>Flag</th></tr></thead><tbody>' + labs.slice(-8).reverse().map(function (l) { return '<tr><td class="nm">' + esc(l.testName || l.test || 'Lab') + '</td><td class="mono">' + esc(l.value != null ? l.value : '-') + '</td><td>' + (l.flag ? '<span class="chip inconsistent">' + esc(l.flag) + '</span>' : '<span class="chip verified">normal</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>'
+            : '<div class="card"><div class="sub">No results yet. Resulted tests from Prism arrive here live over the HIE.</div></div>') +
+          prov('results stream from Prism; the order and the result share one record');
+      } },
+
+    { key: 'assessments', label: 'Assessments & care plans', ic: 'AP', group: 'Clinical', desc: 'The assessment instrument this profile runs.',
+      rails: { hie: [], eesg: [{ pillar: 'Social', front: 'Health outcomes', measure: 'Assessments current', value: '97%', status: 'Verified' }], gic: false }, agents: ['Clinical', 'Nursing'],
+      render: function () {
+        return head('Assessments & care plans', cur.cfg.assessment + ' and the care plans that follow from it.') +
+          kpiRow([['97%', 'assessments current'], [cur.cfg.assessment.split(',')[0], 'instrument'], ['3', 'due this week'], ['0', 'overdue']]) +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">' + (cur.kind === 'Skilled Nursing' ? 'MDS 3.0 drives both the care plan and the PDPM case mix, so the clinical assessment and the payment are one record, not two.' : cur.kind === 'Residential Care' ? 'ADL reviews track each resident\'s independence and flag when a higher level of care is needed.' : 'The acute care plan is built from admission and updated each round.') + ' Outcomes feed the health-outcomes front of the framework.</div></div>' +
+          prov('the assessment instrument is the clinical spine of this profile');
+      } },
+
+    { key: 'billing', label: 'Revenue cycle', ic: 'RC', group: 'Money', desc: 'Claims to the payer in Shield, by this profile\'s payment regime.',
+      rails: { hie: ['CLAIM_ADJUDICATED'], eesg: [{ pillar: 'Economic', front: 'Affordability and financial protection', measure: 'Out-of-pocket share', value: '31%', status: 'Inconsistent' }], gic: false }, agents: ['Revenue', 'Finance'],
+      render: function () {
+        return head('Revenue cycle', 'Claims route to the payer in Shield against the record, under ' + cur.cfg.payment + '.') +
+          kpiRow([[money(84000, '$'), 'billed today'], ['31%', 'out of pocket'], ['18', 'claims to payer'], [money(12400, '$'), 'written off']]) +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">Out-of-pocket share is the EESG affordability signal, Inconsistent until the payer reconciliation in Shield closes. Under ' + cur.cfg.payment + ', the claim is adjudicated against real admission and discharge events, so billing cannot drift from care.</div></div>' +
+          prov('claims are adjudicated in Shield against real admission and discharge events');
+      } },
+
+    { key: 'finance', label: 'Finance', ic: 'FN', group: 'Money', desc: 'Cost per bed-day and operating margin.',
+      rails: { hie: [], eesg: [{ pillar: 'Economic', front: 'Affordability and financial protection', measure: 'Cost per bed-day', value: '$214', status: 'Verified' }], gic: false }, agents: ['Finance'],
+      render: function () {
+        return head('Finance', 'Cost per bed-day, margin and the working capital behind operations.') +
+          kpiRow([[money(214, '$'), 'cost per bed-day'], ['12%', 'operating margin'], [money(2400000, '$'), 'receivables'], ['41d', 'days in AR']]) +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">Finance reads the same admission, discharge and claim events as operations, so cost per bed-day is computed from the real census, not an allocation. One ledger of reality.</div></div>' +
+          prov('finance reads the same HIE events as operations');
+      } },
+
+    { key: 'environment', label: 'Environment', ic: 'EN', group: 'Impact', desc: 'Energy, water, medical waste and anaesthetic gases per bed-day.',
+      rails: { hie: [], eesg: [ { pillar: 'Environment', front: 'Environmental stewardship', measure: 'Energy per bed-day', value: '58 kWh', status: 'Claimed' }, { pillar: 'Environment', front: 'Environmental stewardship', measure: 'Medical waste recycled', value: '64%', status: 'Claimed' }, { pillar: 'Environment', front: 'Environmental stewardship', measure: 'Water per bed-day', value: '410 L', status: 'Claimed' } ], gic: true }, agents: ['Facilities', 'Sustainability'],
+      render: function () {
+        return head('Environment', 'The facility environmental position: energy, water, medical waste and anaesthetic gases, per bed-day.') +
+          kpiRow([['58 kWh', 'energy / bed-day'], ['410 L', 'water / bed-day'], ['64%', 'waste recycled'], ['+8%', 'carbon vs target']]) +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">Hospitals and nursing homes are energy, water and waste intensive, and anaesthetic gases and single-use plastics are the overlooked lines. Each is an EESG emitter read from facilities data, and a candidate for the carbon-credit line on the Commons.</div></div>' +
+          prov('environment reads facilities data; medical waste and anaesthetic gases are first-class, not just energy');
+      } },
+
+    { key: 'eesg', label: 'EESG position', ic: 'ES', group: 'Impact', core: true, desc: 'The framework position, generated from every enabled module.',
+      rails: { hie: [], eesg: [], gic: false }, agents: ['Sustainability', 'Quality'],
+      render: function () {
+        return head('EESG position', 'Generated from every enabled module. Turn a module on and its metrics appear here.') +
+          '<div class="pitch"><div class="k">The EESG rail</div><div class="l">Not a separate report. Every module emits against the framework; this view rolls it up, each metric citing its module.</div></div>' +
+          eesgGridHTML() + prov('each metric names the module it came from; nothing here is re-keyed by hand');
+      } },
+
+    { key: 'impact', label: 'Impact & GIC', ic: 'IM', group: 'Impact', core: true, desc: 'Verified outcomes published to the Commons for capital.',
+      rails: { hie: ['GIC_PUBLISHED'], eesg: [], gic: true }, agents: ['Sustainability', 'Finance', 'Capital'],
+      render: function () {
+        var verified = collectEESG().filter(function (m) { return m.status === 'Verified' && m.gic; });
+        return head('Impact & GIC', cur.name + '\'s verified outcomes and their publication to the Commons, where they raise capital.') +
+          '<div class="impact"><h3>Publishable verified outcomes</h3><div class="rows">' +
+          (verified.length ? verified.map(function (m) { return '<div class="row"><span class="m">' + esc(m.front) + ' &middot; ' + esc(m.measure) + '<br><span style="font-family:var(--font-mono);font-size:10px;color:var(--faint)">from ' + esc(m.from) + '</span></span><span style="display:flex;gap:10px;align-items:center"><span class="v">' + esc(m.value) + '</span>' + UI.statusChip('Verified') + '</span></div>'; }).join('') : '<div class="sub">No verified outcomes in the enabled set yet.</div>') +
+          '</div><p class="provenance">collected from enabled modules; only Verified outcomes can publish</p>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-primary" data-gic-publish>Publish verified record to GIC</button><a class="btn btn-ghost" href="' + X.GIC_URL + '" target="_blank" rel="noopener">Request capital on the Commons</a></div></div>' +
+          '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Readmission reduction, the post-acute capital story</div>' +
+          '<div class="figs"><div class="fig"><div class="fv" id="k-avoid2">' + avoided() + '</div><div class="fk">readmissions avoided</div></div><div class="fig"><div class="fv">' + readmitRate().toFixed(1) + '%</div><div class="fk">30-day rate</div></div><div class="fig"><div class="fv">' + verified.length + '</div><div class="fk">verified outcomes</div></div></div>' +
+          '<div class="sub" style="font-size:13px;margin-top:10px">Each avoided readmission is a saving to the payer and a verified health-impact outcome. That is the readmission-reduction token: sell the outcome to the party that saves the money. Nothing unverified is posted.</div></div>' +
+          prov('the GIC rail; verified EESG outcomes from any enabled module can fund here');
+      } },
+
+    { key: 'library', label: 'Module library', ic: 'LB', group: 'Impact', core: true, desc: 'The full element catalogue. Turn modules on per facility.',
+      rails: { hie: [], eesg: [], gic: false }, agents: ['Platform'],
+      render: function () {
+        return head('Module library', 'Every element Apex offers. The ' + cur.kind + ' profile runs ' + enabledMods().length + ' of ' + MODULES.length + '. Each clips to the HIE, EESG and GIC by one contract.') +
+          '<div class="pitch"><div class="k">Configurable by facility type</div><div class="l">Hospital, skilled nursing and residential care run different module sets from the same code. Toggle one and watch it join the nav and the EESG rail.</div></div>' +
+          '<div class="qt-wrap"><table class="lib"><tbody>' + libRows() + '</tbody></table></div>' +
+          prov('the enabled set is the facility profile; every module is the same three-rail contract');
+      } }
+  ];
+  function moduleByKey(k) { for (var i = 0; i < MODULES.length; i++) if (MODULES[i].key === k) return MODULES[i]; return null; }
+
+  /* ---------- per-profile manifest + overrides ---------- */
+  var MANIFEST = {
+    'PROF-HOSP': ['command', 'intake', 'flow', 'emergency', 'theatre', 'transitions', 'staffing', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'environment', 'eesg', 'impact', 'library'],
+    'PROF-SNF': ['command', 'intake', 'flow', 'transitions', 'staffing', 'assessments', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'environment', 'eesg', 'impact', 'library'],
+    'PROF-RES': ['command', 'intake', 'flow', 'transitions', 'staffing', 'assessments', 'quality', 'medication', 'billing', 'finance', 'environment', 'eesg', 'impact', 'library']
+  };
+  var overrides = {};
+  function baseEnabled(id) { return (MANIFEST[id] || []).slice(); }
+  function isOn(key) { var o = overrides[cur.id] || {}; if (key in o) return o[key]; return baseEnabled(cur.id).indexOf(key) >= 0; }
+  function enabledMods() { return MODULES.filter(function (m) { return isOn(m.key); }); }
+  function navModules() { return enabledMods().map(function (m) { var o = { key: m.key, label: m.label, ic: m.ic, group: m.group }; if (m.key === 'intake') { var n = incoming().length; if (n) o.badge = n; } if (m.key === 'transitions' && inWindow().filter(function (d) { return d.risk === 'high'; }).length) { o.badge = inWindow().filter(function (d) { return d.risk === 'high'; }).length; } return o; }); }
+
+  /* ---------- EESG rollup, generated from enabled modules ---------- */
+  function collectEESG() {
+    var out = [];
+    enabledMods().forEach(function (m) {
+      (m.rails.eesg || []).forEach(function (met) {
+        out.push({ pillar: met.pillar, front: met.front, measure: met.measure, value: met.valueFn ? met.valueFn() : met.value, status: met.statusFn ? met.statusFn() : met.status, from: m.label, gic: !!m.rails.gic });
+      });
+    });
+    return out;
+  }
+  function eesgGridHTML() {
+    var mets = collectEESG(), pillars = X.FRAMEWORK.pillars;
+    return '<div class="eesg">' + pillars.map(function (p) {
+      var rows = mets.filter(function (m) { return m.pillar === p; });
+      return '<div class="pillar"><h4>' + esc(p) + '</h4>' + (rows.length ? rows.map(function (m) {
+        return '<div class="met"><div class="mv"><span class="mn">' + esc(m.measure) + '</span>' + UI.statusChip(m.status) + '</div><div class="mv"><span class="mnum">' + esc(m.value) + '</span><span class="src">' + esc(m.from) + '</span></div></div>';
+      }).join('') : '<div class="empty">No enabled module emits here.</div>') + '</div>';
+    }).join('') + '</div>';
+  }
+  function libRows() {
+    var out = '', lastG = null;
+    MODULES.forEach(function (m) {
+      if (m.group !== lastG) { out += '<tr class="grp-row"><td colspan="4">' + esc(m.group) + '</td></tr>'; lastG = m.group; }
+      var on = isOn(m.key);
+      out += '<tr><td style="width:40px"><button class="toggle' + (on ? ' on' : '') + (m.core ? ' locked' : '') + '" data-toggle="' + esc(m.key) + '"' + (m.core ? ' disabled title="core module, always on"' : '') + '></button></td>' +
+        '<td><div class="nm">' + esc(m.label) + '</div><div class="ds">' + esc(m.desc) + '</div></td><td>' + railChips(m) + '</td><td class="sub2">' + (m.core ? 'core' : on ? 'enabled' : 'available') + '</td></tr>';
+    });
+    return out;
+  }
+
+  /* ---------- IRIS ---------- */
+  function irisContext() {
+    var m = moduleByKey(mod) || {};
+    var sMap = {
+      command: ['What needs me now?', 'Who is at readmission risk?', 'How full are we?'],
+      transitions: ['Explain the 30-day flow', 'Who is high risk?', 'What counts as avoided?'],
+      flow: ['How full are we?'], staffing: ['Is night staffing safe?'],
+      quality: ['What is our readmission rate?'], intake: ['What is waiting?'],
+      eesg: ['Summarise our EESG position', 'What is not verified?'],
+      impact: ['What can we raise capital against?'], library: ['What should a nursing home turn on?'],
+      environment: ['Where is our footprint worst?'], billing: ['Why is affordability flagged?']
+    };
+    return { label: m.label || '', suggestions: sMap[mod] || [] };
+  }
+  function irisAnswer(q) {
+    var s = q.toLowerCase(), m = moduleByKey(mod) || {}, agents = m.agents || ['Telos'], b = beds();
+    function A(t, acts) { return { text: t, agents: agents, actions: acts || [] }; }
+    if (/readmiss|transition|window|discharge|30/.test(s)) return A('Discharge writes to the HIE and starts a 30-day clock. ' + inWindow().length + ' patients are in the window, ' + inWindow().filter(function (d) { return d.risk === 'high'; }).length + ' at high risk. A decline routes them back here, not the ED. ' + avoided() + ' avoided readmissions this period are verified impact on the Commons. The rate is ' + readmitRate().toFixed(1) + '%.', [{ label: 'Open Transitions', kind: 'evidence', q: 'Who is high risk?' }]);
+    if (/risk|high/.test(s)) { var h = inWindow().filter(function (d) { return d.risk === 'high'; }); return A(h.length ? h.map(function (d) { return d.patient + ' (day ' + dayIn(d) + ')'; }).join(', ') + ' ' + (h.length === 1 ? 'is' : 'are') + ' at high readmission risk. Home health flagged a decline. My read: bring them back to the facility, not the ED. A clinician decides.' : 'No one is at high risk in the window right now.', [{ label: 'Route to facility', reply: 'Readmission routed to the facility, not the ED. A clinician confirms the bed.' }]); }
+    if (/full|occup|bed|census/.test(s)) return A('Occupancy is ' + Math.round(b.occ / b.total * 100) + '%, ' + b.occ + ' of ' + b.total + ' beds. ' + (b.total - b.occ) + ' free. Discharges ready today would free more and start their 30-day clocks.', []);
+    if (/staff|ratio|night|five.?star/.test(s)) return A('Night ratio is 1:6.8, below target; day and evening are inside band. For a nursing facility this is the Five-Star staffing measure, so it moves the rating. I would pull one agency nurse to nights. A manager signs the roster.', [{ label: 'Adjust roster', reply: 'One agency nurse moved to nights. The manager confirms the shift.' }]);
+    if (/eesg|framework|position|verified/.test(s)) { var mets = collectEESG(), v = mets.filter(function (x) { return x.status === 'Verified'; }).length; return A('Across ' + enabledMods().length + ' enabled modules, ' + mets.length + ' EESG metrics emit, ' + v + ' Verified. The weak spots are out-of-pocket share and the night staffing ratio. Turn on more modules and the position fills in; it is generated, not written.', [{ label: 'Open EESG', kind: 'evidence', q: 'What is not verified?' }]); }
+    if (/capital|gic|commons|raise|fund/.test(s)) return A('You raise against verified outcomes, led by readmission reduction: ' + avoided() + ' avoided this period, each a saving to the payer. That is the readmission-reduction token, sold to the party that saves the money. Access and HAI rate add to it. Nothing unverified posts.', [{ label: 'Publish to GIC', reply: 'Verified record staged for the Commons. A signatory approves it.' }]);
+    if (/library|turn on|module|nursing|configure/.test(s)) return A('A skilled nursing facility runs Command, Intake, Flow, Transitions, Staffing, MDS assessments, Quality, Medication, Accreditation, Orders, Revenue cycle, Finance, Environment, plus the EESG and GIC rails. No ED, no theatre. A hospital adds those two; residential care drops assessments depth. Same code, different profile.', [{ label: 'Open the library', kind: 'evidence', q: 'What should a nursing home turn on?' }]);
+    if (/intake|referral|waiting/.test(s)) { var inc = incoming(); return A(inc.length ? inc.length + ' referrals are waiting from Bridge, field-screened. Admitting writes an ADMISSION to the HIE and the bed count updates everywhere.' : 'No referrals waiting. They arrive live from Bridge over the HIE.', []); }
+    if (/afford|out.?of.?pocket|billing/.test(s)) return A('Out-of-pocket share is 31%, flagged Inconsistent until the payer reconciliation in Shield closes. The facility cannot upgrade it by assertion; a matched claim does. Under ' + cur.cfg.payment + ' the claim ties to real admission and discharge events.', []);
+    if (/environ|carbon|waste|water|energy/.test(s)) return A('Energy is 58 kWh per bed-day, water 410 L, medical waste 64% recycled, carbon 8% over target. Anaesthetic gases and single-use plastics are the overlooked lines. Each is an EESG emitter and a candidate for the carbon line on the Commons.', []);
+    return A('I read that from ' + cur.name + '\'s own records on the HIE. Ask me about readmissions and the 30-day window, occupancy, staffing, quality, the EESG position or the capital ask. I advise; a licensed clinician makes every clinical call.');
+  }
+
+  /* ---------- render + live loop ---------- */
+  function render() {
+    if (!isOn(mod)) mod = 'command';
+    document.getElementById('root').innerHTML =
+      UI.topbar({ appName: 'Apex', personaName: cur.persona.name, personaRole: cur.persona.role + ' · ' + cur.name }) +
+      '<div class="os">' + UI.osNav(navModules(), mod) +
+        '<main class="os-main">' + UI.tenantBar(profileTabs(), cur.id) + '<div style="margin-top:16px">' + moduleByKey(mod).render() + '</div></main>' +
+      '</div>';
+    UI.iris.context();
+    paintLive(true);
+  }
+  function paintLive(initial) {
+    var b = beds();
+    var kb = document.getElementById('k-beds'); if (kb) kb.textContent = b.occ + '/' + b.total;
+    var kr = document.getElementById('k-ref'); if (kr) kr.textContent = incoming().length;
+    var ki = document.getElementById('k-risk'); if (ki) ki.textContent = inWindow().filter(function (d) { return d.risk === 'high'; }).length;
+    var krr = document.getElementById('k-rr'); if (krr) krr.textContent = readmitRate().toFixed(1) + '%';
+    var kw = document.getElementById('k-inwin'); if (kw) kw.textContent = inWindow().length;
+    var ka = document.getElementById('k-avoid'); if (ka) ka.textContent = avoided();
+    if (!initial) { var tr = document.getElementById('ap-trans'); if (tr) tr.innerHTML = transitionRows(); }
+  }
+  function tick() {
+    tickN++;
+    acc += 6 * 3600000; // 6 simulated hours per second, so the 30-day clock visibly moves
+    var changed = false;
+    discharges.forEach(function (d) {
+      if (d.status === 'in-window' && dayIn(d) >= 30) { d.status = 'cleared'; changed = true; }
+    });
+    // occasionally a rising case becomes high
+    if (tickN % 7 === 0) { var r = inWindow().filter(function (d) { return d.risk === 'rising'; })[0]; if (r) { r.risk = 'high'; changed = true; } }
+    if (changed && (mod === 'transitions' || mod === 'command' || mod === 'impact')) render(); else paintLive(false);
+  }
+
+  /* ---------- events + actions ---------- */
   document.addEventListener('click', function (e) {
-    var t = e.target.getAttribute('data-tenant'); if (t) { cur = X.org(t); render(); return; }
-    var m = e.target.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); render(); return; }
-    var hh = e.target.getAttribute('data-admit');
-    if (hh) {
-      var r = X.referrals().filter(function (x) { return x.household === hh; })[0];
-      X.append('ADMISSION', { household: hh, patientName: r ? r.patientName : hh, orgId: cur.id }, { app: 'apex', persona: cur.personas[0].id });
-      UI.toast('Admitted', (r ? r.patientName : hh) + ' admitted. Bed state updated.');
-      return;
+    var tn = e.target.getAttribute('data-tenant'); if (tn) { cur = profileById(tn); mod = 'command'; seedState(); render(); return; }
+    var mm = e.target.closest('[data-mod]'); if (mm) { mod = mm.getAttribute('data-mod'); render(); return; }
+    var tg = e.target.getAttribute('data-toggle'); if (tg) { var mobj = moduleByKey(tg); if (mobj && !mobj.core) { if (!overrides[cur.id]) overrides[cur.id] = {}; overrides[cur.id][tg] = !isOn(tg); render(); } return; }
+    var hh = e.target.getAttribute('data-admit'); if (hh) { var r = X.referrals().filter(function (x) { return x.household === hh; })[0]; X.append('ADMISSION', { household: hh, patientName: r ? r.patientName : hh, orgId: cur.id }, { app: 'apex', persona: cur.persona.id }); UI.toast('Admitted', (r ? r.patientName : hh) + ' admitted. Bed state updated.'); render(); return; }
+    var dp = e.target.getAttribute('data-discharge'); if (dp) {
+      var dc = { id: 'DC-' + rnd(300, 999), patient: dp, at: Date.now(), risk: 'low', status: 'in-window', to: 'Union Health Outreach' };
+      discharges.unshift(dc);
+      X.append('DISCHARGE', { patient: dp, orgId: cur.id, window: 30 }, { app: 'apex', persona: cur.persona.id });
+      X.append('REFERRAL', { patientName: dp, household: 'HH-' + dp.replace(/\W/g, ''), village: cur.name, reason: 'post-discharge home health', maker: 'ORG-NEXAGEN', to: 'home-health' }, { app: 'apex', persona: cur.persona.id });
+      UI.toast('Discharged', dp + ' discharged. Home-health referral, transport and a 30-day clock started across the HIE.');
+      render(); return;
     }
-    if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Hospital access and quality, Q current', status: 'Verified' }, { app: 'apex', persona: cur.personas[0].id });
-      UI.toast('Published to GIC', cur.name + ' posted a verified record to the Commons.');
-    }
+    var dec = e.target.getAttribute('data-decline'); if (dec) { var d1 = discharges.filter(function (x) { return x.id === dec; })[0]; if (d1) { d1.risk = 'high'; UI.toast('Decline flagged', d1.patient + ' flagged. IRIS raised readmission risk; route to the facility, not the ED.'); render(); } return; }
+    var clr = e.target.getAttribute('data-clear'); if (clr) { var d2 = discharges.filter(function (x) { return x.id === clr; })[0]; if (d2) { d2.status = 'cleared'; UI.toast('Recovered', d2.patient + ' cleared the window. One readmission avoided, a verified outcome for the Commons.'); render(); } return; }
+    if (e.target.matches('[data-gic-publish]')) { var v = collectEESG().filter(function (x) { return x.status === 'Verified' && x.gic; }); X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: avoided() + ' readmissions avoided, ' + v.length + ' verified outcomes', status: 'Verified' }, { app: 'apex', persona: cur.persona.id }); UI.toast('Published to GIC', cur.name + ' posted ' + v.length + ' verified outcomes to the Commons.'); }
   });
 
-  X.subscribe(render);
+  X.subscribe(function (ev) { if (ev) { if (mod === 'intake' || mod === 'command' || mod === 'flow' || mod === 'orders') render(); else paintLive(false); } });
   UI.watchToasts(function (ev) {
-    if (ev.type === 'REFERRAL') return { k: 'Bridge', msg: esc(ev.payload.patientName) + ' referred from ' + esc(ev.payload.village) + '.' };
+    if (ev.type === 'REFERRAL' && ev.actor && ev.actor.app === 'bridge') return { k: 'Bridge', msg: esc(ev.payload.patientName) + ' referred from ' + esc(ev.payload.village) + '.' };
+    if (ev.type === 'LAB_RESULT') return { k: 'Prism', msg: 'Result returned for ' + esc(ev.payload.testName || 'a test') + '.' };
     return null;
   });
-  render();
+
+  UI.iris.mount({ getContext: irisContext, answer: irisAnswer,
+    greeting: 'I am IRIS, Apex\'s copilot. I watch the floor, the referral queue, the 30-day discharge window and the capital ask, across whichever profile this facility runs. I advise; a licensed clinician makes every clinical call. Ask me who is at readmission risk.' });
+
+  seedState(); render(); setInterval(tick, 1000);
 })();
 </script>
 </body>
