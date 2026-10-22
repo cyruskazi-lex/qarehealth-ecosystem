@@ -146,7 +146,7 @@
 
     function build() {
       if (el) return;
-      el = document.createElement('div'); el.className = 'iris';
+      el = document.createElement('div'); el.className = 'iriswidget';
       el.innerHTML =
         '<button class="iris-fab" aria-label="Ask IRIS"><span class="iris-mk"></span><span>Ask IRIS</span></button>' +
         '<section class="iris-panel" role="dialog" aria-label="IRIS copilot" hidden>' +

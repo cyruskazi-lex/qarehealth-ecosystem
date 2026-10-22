@@ -43,17 +43,40 @@
   function profileTabs() { return PROFILES.map(function (p) { return { id: p.id, name: p.name, sizeClass: p.tag }; }); }
 
   /* ---------- live state ---------- */
-  var discharges = [], incidents = [], staffRoster = [], tickN = 0, acc = 0;
+  var discharges = [], incidents = [], staffRoster = [], patients = [], notes = [], tickN = 0, acc = 0;
+  var curPatientId = null, noteDraft = null, piiBlur = false, chartDomain = 'whole', glass = {};
   function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
 
   function seedState() {
     var now = Date.now(), d = 86400000;
+    patients = [
+      { id: 'PT-AMARA', name: 'Amara Okonkwo', age: 52, sex: 'F', mrn: 'QH-PT-100482', loc: 'Dhaka', lang: 'Bangla', code: 'Full code', risk: 'high',
+        allergies: ['Penicillin'], problems: ['Type 2 diabetes (2019)', 'Hypertension (2021)', 'Post-discharge day 3'],
+        meds: ['Metformin 500 mg BD', 'Amlodipine 5 mg OD', 'CardiNex-10 OD'],
+        care: 'Home health daily visit; 30-day readmission window open', from: 'Union Health Outreach',
+        enc: [['Oct 19', 'Discharge, cardiology', 'Dhaka Tertiary Hospital'], ['Oct 14', 'Admission, chest pain', 'Dhaka Tertiary Hospital'], ['Sep 02', 'Clinic review', 'Bhorosha Primary Care']] },
+      { id: 'PT-RAHIM', name: 'Rahim Uddin', age: 71, sex: 'M', mrn: 'QH-PT-100611', loc: 'Gazipur', lang: 'Bangla', code: 'DNR', risk: 'rising',
+        allergies: ['None known'], problems: ['COPD', 'Heart failure (NYHA II)', 'Post-discharge day 11'],
+        meds: ['Furosemide 40 mg OD', 'Salbutamol inhaler PRN', 'Bisoprolol 2.5 mg OD'],
+        care: 'Skilled nursing rehab; weekly review', from: 'Sylhet CHW Program',
+        enc: [['Oct 11', 'Transfer to SNF', 'Shetu Post-Acute Care'], ['Oct 05', 'Admission, COPD exacerbation', 'Dhaka Tertiary Hospital']] },
+      { id: 'PT-NILA', name: 'Nila Akter', age: 34, sex: 'F', mrn: 'QH-PT-100742', loc: 'Dhaka', lang: 'Bangla', code: 'Full code', risk: 'low',
+        allergies: ['Sulfa drugs'], problems: ['Gestational diabetes', 'Antenatal, 32 weeks'],
+        meds: ['Insulin (basal) 10 units nocte', 'Folic acid OD'],
+        care: 'Antenatal clinic, fortnightly', from: 'Bhorosha Primary Care',
+        enc: [['Oct 18', 'Antenatal review', 'Metro Polyclinic Network'], ['Oct 04', 'Antenatal review', 'Metro Polyclinic Network']] }
+    ];
+    curPatientId = null; noteDraft = null;
+    notes = [
+      { id: 'N-0912', pt: 'PT-AMARA', type: 'Discharge summary', by: 'Dr. Naima Islam', when: 'Oct 19', signed: true },
+      { id: 'N-0908', pt: 'PT-RAHIM', type: 'Progress note', by: 'Shahana Akter', when: 'Oct 18', signed: true }
+    ];
     discharges = [
-      { id: 'DC-241', patient: 'A. Khan', at: now - 24 * d, risk: 'low', status: 'in-window', to: 'Union Health Outreach' },
-      { id: 'DC-242', patient: 'R. Begum', at: now - 11 * d, risk: 'rising', status: 'in-window', to: 'Sylhet CHW Program' },
-      { id: 'DC-243', patient: 'M. Das', at: now - 3 * d, risk: 'high', status: 'in-window', to: 'Union Health Outreach' },
-      { id: 'DC-240', patient: 'S. Roy', at: now - 31 * d, risk: 'low', status: 'cleared', to: 'National CHW Corps' },
-      { id: 'DC-239', patient: 'T. Islam', at: now - 33 * d, risk: 'low', status: 'cleared', to: 'Sylhet CHW Program' }
+      { id: 'DC-241', patient: 'A. Khan', at: now - 24 * d, risk: 'low', status: 'in-window', loop: 'reported', to: 'Union Health Outreach' },
+      { id: 'DC-242', patient: 'R. Begum', at: now - 11 * d, risk: 'rising', status: 'in-window', loop: 'seen', to: 'Sylhet CHW Program' },
+      { id: 'DC-243', patient: 'M. Das', at: now - 3 * d, risk: 'high', status: 'in-window', loop: 'accepted', to: 'Union Health Outreach' },
+      { id: 'DC-240', patient: 'S. Roy', at: now - 31 * d, risk: 'low', status: 'cleared', loop: 'closed', to: 'National CHW Corps' },
+      { id: 'DC-239', patient: 'T. Islam', at: now - 33 * d, risk: 'low', status: 'cleared', loop: 'closed', to: 'Sylhet CHW Program' }
     ];
     incidents = [
       { id: 'INC-204', type: 'Medication near-miss', unit: 'General medicine', sev: 'Moderate', status: 'Investigating' },
@@ -84,6 +107,161 @@
   function riskChip(r) { var m = { low: 'verified', rising: 'claimed', high: 'inconsistent' }; return '<span class="chip ' + m[r] + '">' + esc(r) + ' risk</span>'; }
   function railChips(m) { var r = m.rails || {}; return '<span class="rails"><span class="rail exch ' + (r.hie ? 'on' : '') + '">HIE</span><span class="rail eesg ' + ((r.eesg && r.eesg.length) ? 'on' : '') + '">EESG</span><span class="rail gic ' + (r.gic ? 'on' : '') + '">GIC</span></span>'; }
 
+  /* ---------- patient chart (native EHR, holistic record) ---------- */
+  function patientById(id) { for (var i = 0; i < patients.length; i++) if (patients[i].id === id) return patients[i]; return null; }
+  function patientResults(p) {
+    var base = p.id === 'PT-AMARA' ? [['HbA1c', '8.1 %', 'high'], ['Blood pressure', '148/92', 'high'], ['Creatinine', '1.1 mg/dL', 'normal'], ['LDL', '134 mg/dL', 'high']]
+      : p.id === 'PT-RAHIM' ? [['BNP', '640 pg/mL', 'high'], ['SpO2', '93 %', 'low'], ['Potassium', '4.2 mmol/L', 'normal']]
+      : [['HbA1c', '6.2 %', 'normal'], ['Fasting glucose', '104 mg/dL', 'normal'], ['Haemoglobin', '11.1 g/dL', 'low']];
+    // overlay any live lab results from Prism on the exchange for this patient
+    X.labResults().forEach(function (l) { if (l.patient === p.id || l.mrn === p.mrn) base.unshift([l.testName || l.test || 'Lab', String(l.value != null ? l.value : '-'), l.flag ? 'high' : 'normal']); });
+    return base;
+  }
+  function riskBanner(r) { var m = { low: 'verified', rising: 'claimed', high: 'inconsistent' }; return '<span class="chip ' + m[r] + '">' + esc(r) + ' readmission risk</span>'; }
+  function chartHTML() {
+    if (!curPatientId) {
+      return head('Patient chart', 'The native record, holistic across encounters and connected sources. Open a patient to see the chart.') +
+        '<div class="toolbar"><input class="search" placeholder="Search patients by name or MRN" disabled></div>' +
+        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>MRN</th><th>Age/Sex</th><th>Key problems</th><th>Risk</th><th></th></tr></thead><tbody>' +
+        patients.map(function (p) {
+          return '<tr><td class="nm">' + esc(p.name) + '</td><td class="mono">' + esc(p.mrn) + '</td><td>' + p.age + ' / ' + esc(p.sex) + '</td><td class="sub2">' + esc(p.problems.slice(0, 2).join(', ')) + '</td><td>' + riskBanner(p.risk) + '</td><td style="text-align:right"><button class="btn btn-primary btn-sm" data-patient="' + esc(p.id) + '">Open chart</button></td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        prov('one longitudinal record per patient; native data plus what the HIE and connected networks return, de-duplicated');
+    }
+    var p = patientById(curPatientId), cd = chartData(p);
+    return '<div class="sec-head"><div><div class="t">Unified care record</div><div class="d">Holistic across encounters, labs, pharmacy and connected sources, with the care plan, risk and compliance in one view.</div></div>' +
+      '<div class="actions"><button class="btn btn-ghost btn-sm" data-patient="">All patients</button><button class="btn btn-primary btn-sm" data-newnote="' + esc(p.id) + '">AI conversation capture</button></div></div>' +
+      '<div class="chart3">' + chartLeft(p, cd) + chartCenter(p, cd) + chartRight(p, cd) + '</div>';
+  }
+  function pii(s) { return '<span class="pii' + (piiBlur ? ' blur' : '') + '">' + esc(s) + '</span>'; }
+
+  function chartLeft(p, cd) {
+    var initials = p.name.split(' ').map(function (w) { return w[0]; }).slice(0, 2).join('');
+    return '<div><div class="cblock"><h4>Beneficiary record <button class="piitoggle" data-pii="1">' + (piiBlur ? 'Show PII' : 'Blur PII') + '</button></h4>' +
+      '<div class="crec-top"><div class="crec-av">' + esc(initials) + '</div><div><div class="crec-nm">' + pii(p.name) + '</div><div class="crec-meta">' + esc(p.sex) + ' · ' + pii('DOB on file') + ' · age ' + p.age + '<br>MRN ' + pii(p.mrn) + '</div></div></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:11px">' + riskBanner(p.risk) + '<span class="chip">' + esc(p.code) + '</span></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="chip inconsistent">Allergy: ' + esc(p.allergies.join(', ')) + '</span></div></div>' +
+      '<div class="cblock"><h4>Family & caregivers</h4>' + cd.family.map(function (f) { return '<div class="cmember"><span class="cmini">' + esc(f.name.split(' ').map(function (w) { return w[0]; }).slice(0, 2).join('')) + '</span><div style="flex:1"><div class="cnm">' + pii(f.name) + '</div><div class="crole">' + esc(f.rel) + '</div></div><span class="cdot ' + (f.consent ? 'on' : 'off') + '" title="' + (f.consent ? 'consented in Nova' : 'not consented') + '"></span></div>'; }).join('') + '<div class="sub2" style="margin-top:8px">A green dot means consented to view the record in Nova.</div></div>' +
+      '<div class="cblock"><h4>Care team</h4>' + cd.team.map(function (t) { return '<div class="cmember"><span class="cmini">' + esc(t.name.split(' ').map(function (w) { return w[0]; }).slice(0, 2).join('')) + '</span><div style="flex:1"><div class="cnm">' + esc(t.name) + '</div><div class="crole">' + esc(t.role) + '</div></div></div>'; }).join('') + '</div>' +
+      '<div class="cblock"><h4>Quick actions</h4>' +
+        '<button class="qa-btn accent" data-newnote="' + esc(p.id) + '"><span class="shield" style="background:var(--iris-deep)"></span>AI conversation capture</button>' +
+        '<button class="qa-btn" data-mod="orders">Order labs or imaging</button>' +
+        '<button class="qa-btn" data-mod="medication">Reconcile medications</button>' +
+        '<button class="qa-btn" data-mod="transitions">Open discharge plan</button></div>' +
+      '</div>';
+  }
+
+  function chartCenter(p, cd) {
+    var dtabs = [['whole', 'Whole person'], ['clinical', 'Clinical'], ['medication', 'Medication'], ['transitions', 'Transitions'], ['behavioral', 'Behavioral']];
+    var goals = '<div class="goals">' + cd.goals.map(function (g) {
+      var sc = g.status === 'ON TRACK' ? 'ontrack' : g.status === 'AT RISK' ? 'atrisk' : 'hold';
+      return '<div class="goalcard"><div class="gtop"><span class="gstat ' + sc + '">' + esc(g.status) + '</span><span class="gdom">' + esc(g.domain) + '</span></div><div class="glabel">' + esc(g.label) + '</div><div class="progress"><div class="fill ' + (sc === 'atrisk' ? 'crit' : sc === 'ontrack' ? 'ok' : 'warn') + '" style="width:' + g.pct + '%"></div></div><div class="gpct"><span>progress</span><span>' + g.pct + '%</span></div></div>';
+    }).join('') + '</div>';
+    var tabs = '<div class="subtabs">' + dtabs.map(function (t) { return '<button class="subtab' + (chartDomain === t[0] ? ' on' : '') + '" data-domain="' + t[0] + '">' + esc(t[1]) + '</button>'; }).join('') + '</div>';
+    var items = cd.timeline.filter(function (e) { return chartDomain === 'whole' || e.dkey === chartDomain; });
+    var tl = '<div class="tl">' + (items.length ? items.map(function (e) {
+      var protectedBlock = e.protected ? '<div class="protected"><span class="lock"><span class="shield" style="background:var(--mid)"></span>' + esc(e.protLabel || 'Protected note') + (glass[e.id] ? ', unsealed' : '') + '</span>' + (glass[e.id] ? '<span class="chip claimed">access logged</span>' : '<button class="glassbtn" data-glass="' + esc(e.id) + '">Break glass</button>') + '</div>' : '';
+      var body = (e.protected && !glass[e.id]) ? '' : '<div class="tldesc">' + esc(e.desc) + '</div>';
+      return '<div class="tlitem"><div class="tlic ' + e.kind.toLowerCase() + '">' + esc(e.badge) + '</div><div class="tlcard' + (e.kind === 'ALERT' ? ' alert' : '') + '"><div class="tlmeta"><span class="tlbadge">' + esc(e.kind) + '</span><span>' + esc(e.date) + '</span><span>· ' + esc(e.domain) + '</span>' + (e.goal ? '<span>· ' + esc(e.goal) + '</span>' : '') + '</div><div class="tltitle">' + esc(e.title) + '</div>' + body + protectedBlock + '</div></div>';
+    }).join('') : '<div class="sub">No events in this domain.</div>') + '</div>';
+    return '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span class="shield" style="background:var(--iris)"></span><span style="font-family:var(--font-brand);font-weight:800;font-size:17px">Unified care plan</span></div>' +
+      goals + tabs +
+      '<div class="cblock"><h4>Clinical timeline</h4>' + tl + '</div>' +
+      prov('native chart plus labs from Prism and medications from Cura over the HIE; every element carries its source and its consent') + '</div>';
+  }
+
+  function chartRight(p, cd) {
+    var r = cd.risk;
+    var ins = cd.insights.map(function (i) { return '<div class="ins ' + i.kind.toLowerCase() + '"><div class="ik">' + esc(i.kind) + '</div><div class="it">' + esc(i.text) + '</div></div>'; }).join('');
+    var doms = '<div class="rdoms">' + r.domains.map(function (d) { return '<div class="rdom"><div class="rn">' + esc(d.name) + '</div><div class="rv">' + d.score + '</div></div>'; }).join('') + '</div>';
+    var chk = cd.checklist.map(function (c) { return '<div class="chk"><span class="cico ' + (c.ok ? 'ok' : 'no') + '">' + (c.ok ? '✓' : '!') + '</span>' + esc(c.label) + '</div>'; }).join('');
+    return '<div><div class="cblock"><h4><span class="shield" style="background:var(--iris-deep)"></span> Risk radar</h4>' +
+      '<div class="radar"><div class="rscore">' + r.score + '</div><div class="rout">out of 5.0 readmission risk</div><div class="rtrend ' + r.trend + '">' + (r.trend === 'up' ? '↗ trending up' : r.trend === 'down' ? '↘ improving' : '→ stable') + ' · ' + esc(r.note) + '</div>' + doms + '</div></div>' +
+      '<div class="cblock"><h4>IRIS insights</h4>' + ins + '<button class="qa-btn accent" data-iris-ask="What is the plan for ' + esc(p.name.split(' ')[0]) + '?">Ask IRIS about this patient</button></div>' +
+      '<div class="cblock"><h4>Compliance checklist</h4>' + chk + '</div>' +
+      '</div>';
+  }
+
+  function chartData(p) {
+    if (p.id === 'PT-AMARA') return {
+      goals: [
+        { domain: 'Cardiometabolic', label: 'HbA1c to target, under 7%', status: 'AT RISK', pct: 40 },
+        { domain: 'Cardiovascular', label: 'Blood pressure to under 140/90', status: 'AT RISK', pct: 35 },
+        { domain: 'Transitions', label: 'Avoid 30-day readmission', status: 'ON TRACK', pct: 72 }
+      ],
+      timeline: [
+        { id: 'T1', date: 'Today', kind: 'ALERT', badge: 'AL', domain: 'Medication', dkey: 'medication', goal: 'BP to target', title: 'Two missed Amlodipine doses', desc: 'Reported at the home visit. Correlates with higher readmission risk. Adherence counselling and a home BP log advised.' },
+        { id: 'T2', date: 'Oct 21', kind: 'NOTE', badge: 'NT', domain: 'Clinical', dkey: 'clinical', goal: 'Avoid readmission', title: 'Home health visit 3', desc: 'Vitals stable, BP 148/92. Reinforced the medication plan and safety-net advice.' },
+        { id: 'T3', date: 'Oct 20', kind: 'LAB', badge: 'LAB', domain: 'Cardiometabolic', dkey: 'clinical', goal: 'HbA1c to target', title: 'HbA1c 8.1 %', desc: 'Above target. Returned from Prism over the HIE and reconciled to the record.' },
+        { id: 'T4', date: 'Oct 19', kind: 'NOTE', badge: 'BH', domain: 'Behavioral health', dkey: 'behavioral', goal: '', title: 'Counselling session note', desc: 'Discusses post-event anxiety and coping. Clinically relevant to adherence.', protected: true, protLabel: 'Psychotherapy note, protected under 42 CFR Part 2' },
+        { id: 'T5', date: 'Oct 19', kind: 'DC', badge: 'DC', domain: 'Transitions', dkey: 'transitions', goal: 'Avoid readmission', title: 'Discharge, cardiology', desc: 'Discharged to home health. 30-day window opened. Referral and transport dispatched across the HIE.' },
+        { id: 'T6', date: 'Oct 16', kind: 'MED', badge: 'RX', domain: 'Medication', dkey: 'medication', goal: '', title: 'CardiNex-10 dispensed', desc: 'Collected at Shetu Community Pharmacy. Reconciled from Cura over the HIE.' },
+        { id: 'T7', date: 'Oct 14', kind: 'ADM', badge: 'ADM', domain: 'Clinical', dkey: 'clinical', goal: '', title: 'Admission, chest pain', desc: 'Admitted via ED. Troponin negative, hypertensive urgency managed.' }
+      ],
+      risk: { score: '4.2', trend: 'up', note: '+0.3 since discharge', domains: [{ name: 'Cardiometabolic', score: '3.5' }, { name: 'Adherence', score: '4.1' }, { name: 'Social support', score: '2.8' }] },
+      team: [{ name: 'Dr. Naima Islam', role: 'Attending, cardiology' }, { name: cur.persona.name, role: cur.persona.role }, { name: 'Nusrat Jahan', role: 'Pharmacist (Cura)' }, { name: 'Fatima Begum', role: 'Home health (Bridge)' }],
+      family: [{ name: 'Chidi Okonkwo', rel: 'Spouse', consent: true }, { name: 'Ada Okonkwo', rel: 'Daughter', consent: false }],
+      checklist: [{ label: 'Consent on file', ok: true }, { label: 'Medication reconciliation', ok: true }, { label: 'Discharge summary signed', ok: true }, { label: '42 CFR Part 2 consent for protected note', ok: false }],
+      insights: [
+        { kind: 'CRITICAL', text: 'Two missed Amlodipine doses inside the 30-day window. Recommend adherence counselling and a home BP log, and confirm the next review is booked.' },
+        { kind: 'RISK', text: 'HbA1c 8.1% and BP 148/92 both above target at day 3 post-discharge. Review within the week; a clinician decides escalation.' },
+        { kind: 'OPPORTUNITY', text: 'Spouse is consented in Nova and can confirm medication pickup and arrange transport to the review, which lowers the readmission risk.' }
+      ]
+    };
+    // Generic rich-enough data for the other patients, derived from their own record.
+    return {
+      goals: [
+        { domain: 'Clinical', label: p.problems[0], status: p.risk === 'high' ? 'AT RISK' : 'ON TRACK', pct: p.risk === 'high' ? 38 : 64 },
+        { domain: 'Transitions', label: 'Avoid 30-day readmission', status: 'ON TRACK', pct: 70 },
+        { domain: 'Medication', label: 'Medication adherence', status: 'ON HOLD', pct: 55 }
+      ],
+      timeline: p.enc.map(function (e, i) { return { id: 'G' + i, date: e[0], kind: i === 0 ? 'DC' : 'ADM', badge: i === 0 ? 'DC' : 'ADM', domain: 'Clinical', dkey: 'clinical', goal: '', title: e[1], desc: e[2] + '.' }; }),
+      risk: { score: p.risk === 'high' ? '4.0' : p.risk === 'rising' ? '3.4' : '2.1', trend: p.risk === 'rising' ? 'up' : 'flat', note: 'last evaluated today', domains: [{ name: 'Clinical', score: '3.2' }, { name: 'Adherence', score: '3.0' }, { name: 'Social', score: '2.4' }] },
+      team: [{ name: cur.persona.name, role: cur.persona.role }, { name: 'Care coordinator', role: 'Transitions' }],
+      family: [{ name: 'Next of kin', rel: 'Family', consent: true }],
+      checklist: [{ label: 'Consent on file', ok: true }, { label: 'Medication reconciliation', ok: true }, { label: 'Care plan signed', ok: p.risk !== 'high' }],
+      insights: [{ kind: p.risk === 'high' ? 'CRITICAL' : 'RISK', text: 'Primary problem is ' + p.problems[0] + '. Reinforce the care plan and confirm the next review is booked.' }, { kind: 'OPPORTUNITY', text: 'Family is consented in Nova and can support the plan at home.' }]
+    };
+  }
+
+  /* ---------- clinical documentation: ambient scribe + translation ---------- */
+  var DEMO_CONVO = [
+    { who: 'Nurse', bn: 'Apnar buke betha ki ekhono ache?', en: 'Is the chest pain still there?' },
+    { who: 'Patient', bn: 'Ektu ache, ar hatle haaper somossa hoy.', en: 'A little, and I get breathless when I walk.' },
+    { who: 'Nurse', bn: 'Oshudh niyomito kheyechen? Metformin ar Amlodipine?', en: 'Have you taken your medicines regularly? Metformin and Amlodipine?' },
+    { who: 'Patient', bn: 'Metformin kheyechi, kintu Amlodipine dui din miss hoyeche.', en: 'I took Metformin, but I missed Amlodipine for two days.' }
+  ];
+  function docHTML() {
+    if (noteDraft && noteDraft.stage === 'drafted') {
+      var p = patientById(noteDraft.pt);
+      var isX = noteDraft.mode === 'translate';
+      return head('Clinical note, draft', 'Telos drafted this from ' + (isX ? 'a translated patient conversation' : 'voice dictation') + '. Review, edit, and sign. Telos never signs; a licensed clinician does.') +
+        '<div class="pitch"><div class="k">' + (isX ? 'Conversational translation' : 'Ambient scribe') + '</div><div class="l">' + (isX ? 'Captured in ' + esc(p.lang) + ', stored in English for consistency, structured and coded. Original transcript kept.' : 'Captured from voice, structured into the note template, orders surfaced as drafts.') + '</div></div>' +
+        (isX ? '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Transcript (' + esc(p.lang) + ' to English)</div>' + DEMO_CONVO.map(function (t) { return '<div style="padding:7px 0;border-bottom:1px solid var(--hairline)"><div style="font-size:12px;color:var(--mid)"><b>' + esc(t.who) + ':</b> ' + esc(t.bn) + '</div><div style="font-size:13px">' + esc(t.en) + '</div></div>'; }).join('') + '</div>' : '') +
+        '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Structured note, ' + esc(p.name) + '</div>' +
+          soap('Subjective', 'Residual chest pain, exertional breathlessness. Reports missing Amlodipine for two days; Metformin taken.') +
+          soap('Objective', 'Alert, comfortable at rest. Last BP 148/92, HbA1c 8.1%. No acute distress.') +
+          soap('Assessment', 'Hypertension suboptimally controlled, partly adherence. Type 2 diabetes above target. Day 3 post-discharge, elevated readmission risk.') +
+          soap('Plan', 'Reinforce Amlodipine adherence, home BP log, dietitian referral, review in 1 week. Safety-net advice given.') +
+        '</div>' +
+        '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Telos extracted, as drafts for sign-off</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<span class="chip claimed">Problem: BP above target</span><span class="chip claimed">Order: dietitian referral</span><span class="chip claimed">Task: adherence counselling</span><span class="chip claimed">Flag: 2 missed Amlodipine doses</span></div>' +
+          '<div class="sub2" style="margin-top:10px">Coded to SNOMED CT and ICD-10. Nothing enters the record until a clinician signs.</div></div>' +
+        '<div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-primary" data-signnote="1">Sign note</button><button class="btn btn-ghost" data-discardnote="1">Discard</button></div>' +
+        prov('AI-drafted from ' + (isX ? 'translated conversation' : 'voice') + ', provenance-tagged, pending a licensed signature');
+    }
+    if (noteDraft && noteDraft.stage === 'capturing') {
+      return head('Clinical note', 'Capturing...') + '<div class="card shadow" style="text-align:center;padding:40px"><div class="livedot"></div> <span class="sub">Telos is ' + (noteDraft.mode === 'translate' ? 'transcribing and translating the conversation' : 'transcribing the dictation') + ' and structuring the note...</span></div>';
+    }
+    return head('Clinical documentation', 'Notes for this facility. Create one by voice dictation, or by capturing a patient conversation with live translation.') +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px"><button class="btn btn-primary" data-startnote="dictate">New note, voice dictation</button><button class="btn btn-ghost" data-startnote="translate">New note, patient conversation + translation</button></div>' +
+      '<div class="qt-wrap"><table class="qt"><thead><tr><th>Note</th><th>Patient</th><th>Type</th><th>By</th><th>When</th><th>Status</th></tr></thead><tbody>' +
+      notes.map(function (n) { var p = patientById(n.pt); return '<tr><td class="mono">' + esc(n.id) + '</td><td class="nm">' + esc(p ? p.name : n.pt) + '</td><td>' + esc(n.type) + '</td><td>' + esc(n.by) + '</td><td class="mono">' + esc(n.when) + '</td><td>' + (n.signed ? '<span class="chip verified">signed</span>' : '<span class="chip claimed">draft</span>') + '</td></tr>'; }).join('') +
+      '</tbody></table></div>' + prov('voice and conversation captured by Telos, structured and coded, signed by a licensed clinician');
+  }
+  function soap(h, b) { return '<div style="padding:8px 0;border-bottom:1px solid var(--hairline)"><div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--iris)">' + esc(h) + '</div><div style="font-size:13px;margin-top:3px">' + esc(b) + '</div></div>'; }
+  function loopChip(l) { var m = { sent: 'claimed', received: 'claimed', accepted: 'claimed', scheduled: 'claimed', seen: 'verified', reported: 'verified', closed: 'verified' }; return '<span class="chip ' + (m[l] || 'unmeasured') + '">loop: ' + esc(l) + '</span>'; }
+
   function transitionRows() {
     var w = cur.cfg.window;
     if (!w) return '<div class="sub">This profile does not run a 30-day readmission window.</div>';
@@ -91,7 +269,7 @@
       var day = dayIn(dc), pct = day / 30 * 100;
       var fill = dc.status === 'readmitted' ? 'crit' : dc.status === 'cleared' ? 'ok' : dc.risk === 'high' ? 'crit' : dc.risk === 'rising' ? 'warn' : '';
       return '<div style="padding:11px 0;border-bottom:1px solid var(--hairline)"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px">' +
-        '<div><span style="font-weight:600;font-size:13px">' + esc(dc.patient) + '</span> <span class="sub2">to ' + esc(dc.to) + '</span></div>' +
+        '<div><span style="font-weight:600;font-size:13px">' + esc(dc.patient) + '</span> <span class="sub2">to ' + esc(dc.to) + '</span> ' + (dc.loop ? loopChip(dc.loop) : '') + '</div>' +
         (dc.status === 'in-window' ? riskChip(dc.risk) : dc.status === 'cleared' ? '<span class="chip verified">readmission avoided</span>' : '<span class="chip inconsistent">readmitted</span>') + '</div>' +
         '<div class="progress"><div class="fill ' + fill + '" style="width:' + pct + '%"></div></div>' +
         '<div style="display:flex;justify-content:space-between;margin-top:5px"><span class="band">day ' + day + ' of 30</span>' +
@@ -218,6 +396,14 @@
           '</tbody></table></div>' + prov('accreditation obligations are tracked live, by the standard this profile answers to');
       } },
 
+    { key: 'chart', label: 'Patient chart', ic: 'PT', group: 'Clinical', desc: 'The native EHR record: holistic, longitudinal, connected.',
+      rails: { hie: ['LAB_RESULT', 'RX_DISPENSED', 'ADMISSION', 'DISCHARGE'], eesg: [{ pillar: 'Social', front: 'Health outcomes', measure: 'Records with reconciled history', value: '96%', status: 'Verified' }], gic: false }, agents: ['Clinical', 'Nursing', 'Records'],
+      render: function () { return chartHTML(); } },
+
+    { key: 'documentation', label: 'Clinical notes', ic: 'CN', group: 'Clinical', desc: 'Ambient AI scribe and conversational translation, draft then sign.',
+      rails: { hie: ['CLINICAL_NOTE'], eesg: [{ pillar: 'Social', front: 'Care quality and safety', measure: 'Notes signed within 24h', value: '98%', status: 'Verified' }], gic: false }, agents: ['Clinical', 'Telos scribe'],
+      render: function () { return docHTML(); } },
+
     { key: 'orders', label: 'Orders & results', ic: 'OR', group: 'Clinical', desc: 'Lab and imaging orders and results from Prism.',
       rails: { hie: ['LAB_RESULT'], eesg: [], gic: false }, agents: ['Clinical', 'Laboratory'],
       render: function () {
@@ -237,13 +423,35 @@
           prov('the assessment instrument is the clinical spine of this profile');
       } },
 
-    { key: 'billing', label: 'Revenue cycle', ic: 'RC', group: 'Money', desc: 'Claims to the payer in Shield, by this profile\'s payment regime.',
-      rails: { hie: ['CLAIM_ADJUDICATED'], eesg: [{ pillar: 'Economic', front: 'Affordability and financial protection', measure: 'Out-of-pocket share', value: '31%', status: 'Inconsistent' }], gic: false }, agents: ['Revenue', 'Finance'],
+    { key: 'billing', label: 'Revenue cycle', ic: 'RC', group: 'Money', desc: 'Settlement, receivables and payer mix: cash, insurance and scheme.',
+      rails: { hie: ['CLAIM_ADJUDICATED'], eesg: [{ pillar: 'Economic', front: 'Affordability and financial protection', measure: 'Out-of-pocket share', value: '31%', status: 'Inconsistent' }], gic: false }, agents: ['Revenue', 'Finance', 'Payer'],
       render: function () {
-        return head('Revenue cycle', 'Claims route to the payer in Shield against the record, under ' + cur.cfg.payment + '.') +
-          kpiRow([[money(84000, '$'), 'billed today'], ['31%', 'out of pocket'], ['18', 'claims to payer'], [money(12400, '$'), 'written off']]) +
-          '<div class="card shadow"><div class="sub" style="font-size:13px">Out-of-pocket share is the EESG affordability signal, Inconsistent until the payer reconciliation in Shield closes. Under ' + cur.cfg.payment + ', the claim is adjudicated against real admission and discharge events, so billing cannot drift from care.</div></div>' +
-          prov('claims are adjudicated in Shield against real admission and discharge events');
+        var sc = cur.kind === 'Hospital' ? 1 : cur.kind === 'Skilled Nursing' ? 0.5 : 0.3;
+        var billed = Math.round(1840000 * sc), settled = Math.round(billed * 0.62), due = Math.round(billed * 0.24), unsettled = Math.round(billed * 0.09), lost = Math.round(billed * 0.05);
+        // payer mix: [name, billed%, collect rate, note]
+        var payers = [
+          ['Cash / self-pay', 28, '94%', 'collected at point of care, small outstanding'],
+          ['Private insurance', 34, '81%', 'adjudication 9 to 30 days; 6 claims denied, 4 appealed'],
+          ['Government scheme', 26, '72%', 'Surokkha and national financing; slow settlement'],
+          ['Employer / corporate', 12, '88%', 'monthly reconciliation']
+        ];
+        // claims lifecycle
+        var claims = [
+          ['Submitted', 42, 'claimed'], ['Adjudicating', 23, 'claimed'], ['Paid', 61, 'verified'], ['Denied', 6, 'inconsistent'], ['Appealed', 4, 'claimed']
+        ];
+        var aging = [['0 to 30 days', 54], ['31 to 60', 27], ['61 to 90', 13], ['90+ (at risk)', 6]];
+        return head('Revenue cycle', 'Every encounter billed against the record, settled across cash, insurance and government scheme. Nothing is lost silently.') +
+          kpiRow([[money(settled, '$'), 'settled, quarter', 'rc-settled'], [money(due, '$'), 'due, within terms'], [money(unsettled, '$'), 'unsettled, overdue'], [money(lost, '$'), 'written off (lost)']]) +
+          '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Payer mix and collection</div>' +
+            '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Payer</th><th class="num">Share</th><th class="num">Collected</th><th>Note</th></tr></thead><tbody>' +
+            payers.map(function (p) { var collNum = parseInt(p[2]); var c = collNum >= 88 ? 'verified' : collNum >= 78 ? 'claimed' : 'inconsistent'; return '<tr><td class="nm">' + esc(p[0]) + '</td><td class="num">' + p[1] + '%</td><td class="num"><span class="chip ' + c + '">' + esc(p[2]) + '</span></td><td class="sub2">' + esc(p[3]) + '</td></tr>'; }).join('') +
+            '</tbody></table></div></div>' +
+          '<div style="display:flex;flex-direction:column;gap:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Claims lifecycle</div>' +
+            claims.map(function (c) { return '<div class="row" style="padding:7px 10px"><span class="m">' + esc(c[0]) + '</span><span style="display:flex;gap:8px;align-items:center"><span class="v">' + c[1] + '</span><span class="chip ' + c[2] + '"></span></span></div>'; }).join('') + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Receivables aging</div>' +
+            aging.map(function (a) { return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px"><span>' + esc(a[0]) + '</span><span class="mono">' + a[1] + '%</span></div><div class="progress"><div class="fill ' + (a[0].indexOf('90') === 0 || a[0].indexOf('at risk') > -1 ? 'crit' : '') + '" style="width:' + a[1] + '%"></div></div></div>'; }).join('') + '</div></div></div>' +
+          '<div class="card shadow" style="margin-top:16px"><div class="sub" style="font-size:13px">Out-of-pocket share is 31%, the EESG affordability signal, Inconsistent until the payer reconciliation in Shield closes. Claims adjudicate against real admission and discharge events, so billing cannot drift from care, and an overdue or denied claim surfaces here rather than being quietly lost.</div></div>' +
+          prov('settlement reconciles with the payer in Shield against real admission, discharge and service events on the HIE');
       } },
 
     { key: 'finance', label: 'Finance', ic: 'FN', group: 'Money', desc: 'Cost per bed-day and operating margin.',
@@ -318,9 +526,9 @@
 
   /* ---------- per-profile manifest + overrides ---------- */
   var MANIFEST = {
-    'PROF-HOSP': ['command', 'intake', 'flow', 'emergency', 'theatre', 'transitions', 'staffing', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
-    'PROF-SNF': ['command', 'intake', 'flow', 'transitions', 'staffing', 'assessments', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
-    'PROF-RES': ['command', 'intake', 'flow', 'transitions', 'staffing', 'assessments', 'quality', 'medication', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library']
+    'PROF-HOSP': ['command', 'intake', 'flow', 'emergency', 'theatre', 'transitions', 'staffing', 'chart', 'documentation', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
+    'PROF-SNF': ['command', 'intake', 'flow', 'transitions', 'staffing', 'chart', 'documentation', 'assessments', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
+    'PROF-RES': ['command', 'intake', 'flow', 'transitions', 'staffing', 'chart', 'documentation', 'assessments', 'quality', 'medication', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library']
   };
   var overrides = {};
   function baseEnabled(id) { return (MANIFEST[id] || []).slice(); }
@@ -363,6 +571,8 @@
     var m = moduleByKey(mod) || {};
     var sMap = {
       command: ['What needs me now?', 'Who is at readmission risk?', 'How full are we?'],
+      chart: ['Open the chart', 'Who should I see first?'],
+      documentation: ['Draft a note by voice', 'Capture a patient conversation'],
       transitions: ['Explain the 30-day flow', 'Who is high risk?', 'What counts as avoided?'],
       flow: ['How full are we?'], staffing: ['Is night staffing safe?'],
       quality: ['What is our readmission rate?'], intake: ['What is waiting?'],
@@ -372,9 +582,20 @@
     };
     return { label: m.label || '', suggestions: sMap[mod] || [] };
   }
+  function role() { return SESSION ? SESSION.role : 'admin'; }
   function irisAnswer(q) {
-    var s = q.toLowerCase(), m = moduleByKey(mod) || {}, agents = m.agents || ['Telos'], b = beds();
+    var s = q.toLowerCase(), m = moduleByKey(mod) || {}, agents = m.agents || ['Telos'], b = beds(), r = role();
     function A(t, acts) { return { text: t, agents: agents, actions: acts || [] }; }
+    // Role-aware framing: IRIS answers the person in front of it.
+    if (/what needs me|right now|my (day|list|tasks|shift)/.test(s)) {
+      if (r === 'nurse') return A('Your shift: ' + inWindow().filter(function (d) { return d.risk === 'high'; }).length + ' post-discharge patients at high risk need a call, vitals are due in ' + cur.units[0].name + ', and one note is waiting to be signed. Night staffing is thin. I can draft notes by voice or capture a patient conversation. A clinician signs every order.', [{ label: 'Open my patients', kind: 'evidence', q: 'who is at readmission risk?' }]);
+      if (r === 'doctor') return A('Clinically: ' + (patientById('PT-AMARA').name) + ' is day 3 post-discharge, BP 148/92 and HbA1c 8.1%, flagged high risk, likely adherence. ' + patientById('PT-RAHIM').name + ' is day 11, BNP rising. Review both. The record supports a dietitian referral and adherence counselling; you decide and sign.', [{ label: 'Open the chart', kind: 'evidence', q: 'open the chart' }]);
+      if (r === 'quality') return A('Quality view: ' + openDevs().length + ' open deviations, readmission rate ' + readmitRate().toFixed(1) + '%, HAI 1.9%, falls 2.4 per 1k bed-days. One cold-chain deviation is gating a lot. Survey readiness is green except the SNF staffing star.', [{ label: 'Open Quality', kind: 'evidence', q: 'what is our readmission rate?' }]);
+      return A('Operations: occupancy ' + Math.round(b.occ / b.total * 100) + '%, ' + inWindow().length + ' in the discharge window with ' + inWindow().filter(function (d) { return d.risk === 'high'; }).length + ' high risk, night staffing below target. ' + avoided() + ' avoided readmissions are verified impact. The decisions are in Command.', [{ label: 'Open Command', kind: 'evidence', q: 'how full are we?' }]);
+    }
+    if (/chart|record|patient|holistic/.test(s)) return A('The chart is the native record plus labs from Prism and medications from Cura over the HIE, de-duplicated with provenance on every element. ' + patientById('PT-AMARA').name + ' is the high-risk post-discharge patient to see first.', [{ label: 'Open the chart', kind: 'evidence', q: 'open the chart' }]);
+    if (/note|voice|dictat|scribe|translat|conversation|bangla|language/.test(s)) return A('I can draft a note from your voice, or capture a patient conversation in ' + patientById('PT-AMARA').lang + ' and store it in English so the record stays consistent, with the original transcript kept. I structure and code it; a clinician reviews and signs. I never sign.', [{ label: 'Start a note', kind: 'evidence', q: 'open documentation' }]);
+    if (/loop|referral status|closed/.test(s)) return A('Referrals run a closed loop: sent, received, accepted, scheduled, seen, reported, closed. ' + discharges.filter(function (d) { return d.loop && d.loop !== 'closed'; }).length + ' are open in the loop; an open loop past its SLA is flagged so nothing is sent and forgotten.', [{ label: 'Open Transitions', kind: 'evidence', q: 'explain the 30-day flow' }]);
     if (/readmiss|transition|window|discharge|30/.test(s)) return A('Discharge writes to the HIE and starts a 30-day clock. ' + inWindow().length + ' patients are in the window, ' + inWindow().filter(function (d) { return d.risk === 'high'; }).length + ' at high risk. A decline routes them back here, not the ED. ' + avoided() + ' avoided readmissions this period are verified impact on the Commons. The rate is ' + readmitRate().toFixed(1) + '%.', [{ label: 'Open Transitions', kind: 'evidence', q: 'Who is high risk?' }]);
     if (/risk|high/.test(s)) { var h = inWindow().filter(function (d) { return d.risk === 'high'; }); return A(h.length ? h.map(function (d) { return d.patient + ' (day ' + dayIn(d) + ')'; }).join(', ') + ' ' + (h.length === 1 ? 'is' : 'are') + ' at high readmission risk. Home health flagged a decline. My read: bring them back to the facility, not the ED. A clinician decides.' : 'No one is at high risk in the window right now.', [{ label: 'Route to facility', reply: 'Readmission routed to the facility, not the ED. A clinician confirms the bed.' }]); }
     if (/full|occup|bed|census/.test(s)) return A('Occupancy is ' + Math.round(b.occ / b.total * 100) + '%, ' + b.occ + ' of ' + b.total + ' beds. ' + (b.total - b.occ) + ' free. Discharges ready today would free more and start their 30-day clocks.', []);
@@ -436,7 +657,28 @@
       render(); return;
     }
     var dec = e.target.getAttribute('data-decline'); if (dec) { var d1 = discharges.filter(function (x) { return x.id === dec; })[0]; if (d1) { d1.risk = 'high'; UI.toast('Decline flagged', d1.patient + ' flagged. IRIS raised readmission risk; route to the facility, not the ED.'); render(); } return; }
-    var clr = e.target.getAttribute('data-clear'); if (clr) { var d2 = discharges.filter(function (x) { return x.id === clr; })[0]; if (d2) { d2.status = 'cleared'; UI.toast('Recovered', d2.patient + ' cleared the window. One readmission avoided, a verified outcome for the Commons.'); render(); } return; }
+    var clr = e.target.getAttribute('data-clear'); if (clr) { var d2 = discharges.filter(function (x) { return x.id === clr; })[0]; if (d2) { d2.status = 'cleared'; d2.loop = 'closed'; UI.toast('Recovered', d2.patient + ' cleared the window. One readmission avoided, a verified outcome for the Commons.'); render(); } return; }
+    var pt = e.target.getAttribute('data-patient'); if (pt !== null) { curPatientId = pt || null; chartDomain = 'whole'; glass = {}; render(); return; }
+    if (e.target.closest('[data-pii]')) { piiBlur = !piiBlur; render(); return; }
+    var dmn = e.target.getAttribute('data-domain'); if (dmn) { chartDomain = dmn; render(); return; }
+    var gl = e.target.getAttribute('data-glass'); if (gl) { glass[gl] = true; UI.toast('Break glass', 'Protected note unsealed. The access is logged to the immutable audit trail with your identity and reason.'); render(); return; }
+    var ia = e.target.getAttribute('data-iris-ask'); if (ia) { UI.iris.ask(ia); return; }
+    var nn = e.target.getAttribute('data-newnote'); if (nn) { mod = 'documentation'; noteDraft = { pt: nn, mode: 'translate', stage: 'start' }; render(); return; }
+    var sn = e.target.getAttribute('data-startnote'); if (sn) {
+      noteDraft = { pt: curPatientId || 'PT-AMARA', mode: sn, stage: 'capturing' };
+      render();
+      setTimeout(function () { if (noteDraft) { noteDraft.stage = 'drafted'; render(); } }, UI.reduce ? 10 : 1600);
+      return;
+    }
+    if (e.target.matches('[data-signnote]')) {
+      var who = SESSION && SESSION.roleLabel ? (cur.persona.name) : cur.persona.name;
+      var p = patientById(noteDraft.pt);
+      notes.unshift({ id: 'N-' + rnd(900, 999), pt: noteDraft.pt, type: noteDraft.mode === 'translate' ? 'Conversation note' : 'Dictated note', by: cur.persona.name, when: 'today', signed: true });
+      X.append('CLINICAL_NOTE', { patient: noteDraft.pt, patientName: p ? p.name : '', orgId: cur.id, mode: noteDraft.mode }, { app: 'apex', persona: cur.persona.id });
+      UI.toast('Note signed', 'Signed by ' + cur.persona.name + '. Orders and problems released to the record and the HIE.');
+      noteDraft = null; render(); return;
+    }
+    if (e.target.matches('[data-discardnote]')) { noteDraft = null; render(); return; }
     if (e.target.matches('[data-gic-publish]')) { var v = collectEESG().filter(function (x) { return x.status === 'Verified' && x.gic; }); X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: avoided() + ' readmissions avoided, ' + v.length + ' verified outcomes', status: 'Verified' }, { app: 'apex', persona: cur.persona.id }); UI.toast('Published to GIC', cur.name + ' posted ' + v.length + ' verified outcomes to the Commons.'); }
   });
 
@@ -447,8 +689,13 @@
     return null;
   });
 
-  UI.iris.mount({ getContext: irisContext, answer: irisAnswer,
-    greeting: 'I am IRIS, Apex\'s copilot. I watch the floor, the referral queue, the 30-day discharge window and the capital ask, across whichever profile this facility runs. I advise; a licensed clinician makes every clinical call. Ask me who is at readmission risk.' });
+  function greetingFor(r) {
+    var tail = ' I advise; a licensed clinician makes every clinical call.';
+    if (r === 'nurse') return 'I am IRIS. I help you through the shift: your patients, what is due, and drafting notes by voice or a translated patient conversation.' + tail + ' Ask me about your list.';
+    if (r === 'doctor') return 'I am IRIS. I surface the clinical picture: who is at risk, what the record supports, and orders to consider, always with the evidence.' + tail + ' Ask me about a patient.';
+    if (r === 'quality') return 'I am IRIS. I track readmissions, deviations, infections, falls and survey readiness for this facility.' + tail + ' Ask me where quality is slipping.';
+    return 'I am IRIS, Apex\'s copilot. I watch the floor, the referral queue, the 30-day discharge window and the capital ask.' + tail + ' Ask me what needs you.';
+  }
 
   window.QareAuth.boot({
     app: 'Apex', product: 'apex', sector: 'provider',
@@ -460,6 +707,7 @@
     ],
     onReady: function (session) {
       SESSION = session;
+      UI.iris.mount({ getContext: irisContext, answer: irisAnswer, greeting: greetingFor(session.role) });
       seedState(); render(); setInterval(tick, 1000);
     }
   });
