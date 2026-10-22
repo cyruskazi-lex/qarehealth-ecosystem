@@ -44,7 +44,6 @@
           '<span class="persona"><span class="ava">' + esc(initials) + '</span>' +
           '<span><span class="pn">' + esc(opts.personaName) + '</span><br><span class="pr">' + esc(opts.personaRole || '') + '</span></span>' + role + '</span>'
         ) : '') +
-        '<a class="btn btn-ghost btn-sm" href="' + (X ? X.GIC_URL : '#') + '" target="_blank" rel="noopener" style="margin-left:14px">Global Impact Commons</a>' +
       '</header>';
   }
 
