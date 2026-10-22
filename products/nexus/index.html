@@ -31,6 +31,7 @@
   var demand = [], cold = { series: [], breach: false, product: 'OncoNex-100', shipment: 'SHP-ONC-4471' };
   var stockoutAt = 0, tickN = 0;
   var held = {}, acked = {};
+  var compTab = 'overview', intTab = 'systems';
 
   // live state for the newly live modules
   var batches = [], deviations = [], scans = { serialized: 0, total: 0, blocked: 0, feed: [] };
@@ -167,6 +168,165 @@
   }
   function glance(label, val, cls) { return '<div class="row" style="padding:8px 10px"><span class="m">' + esc(label) + '</span><span style="display:flex;gap:8px;align-items:center"><span class="v">' + esc(val) + '</span><span class="chip ' + cls + '"></span></span></div>'; }
 
+  /* ---------- N1-N3: compliance sub-views ---------- */
+  function compSubtabs() {
+    var tabs = [['overview','Overview'],['evidence','Evidence vault'],['validation','Validation & Part 11'],['aigovern','AI governance']];
+    return '<div class="subtabs" style="margin-bottom:16px;display:flex;gap:6px;flex-wrap:wrap">' + tabs.map(function(t) {
+      return '<button class="btn btn-sm' + (compTab === t[0] ? ' btn-primary' : ' btn-ghost') + '" data-comptab="' + t[0] + '">' + esc(t[1]) + '</button>';
+    }).join('') + '</div>';
+  }
+  function trustCard(title, chipLabel, desc, rows, footer) {
+    return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="font-size:13px">' + esc(title) + '</strong><span class="chip verified">' + esc(chipLabel) + '</span></div>' +
+      (desc ? '<div class="sub2">' + esc(desc) + '</div>' : '') +
+      '<div class="rows" style="margin-top:10px">' + rows.map(function(r) { return glance(r[0], r[1], 'verified'); }).join('') + '</div>' +
+      (footer ? '<div class="sub2" style="margin-top:8px;font-size:12px;line-height:1.6">' + esc(footer) + '</div>' : '') + '</div>';
+  }
+  function evidenceVaultHTML() {
+    return '<div class="cards3">' +
+      trustCard('SOC 2 Type II', 'Attested', 'Trust services: security, availability, confidentiality', [['Report period', '12 months'], ['Last audit', 'Aug 2026'], ['Auditor', 'Independent (Big 4)'], ['Exceptions', '0']], 'Full report available under NDA to qualified buyers.') +
+      trustCard('Penetration test', 'Clean', 'Independent annual + continuous scanning', [['Last test', 'Sep 2026'], ['Critical findings', '0'], ['High findings', '0'], ['Remediation SLA', '24h critical, 7d high']], '') +
+      trustCard('Tenancy & isolation', 'Single-tenant', 'Your data is yours. Isolated, encrypted, never shared.', [['Architecture', 'Single-tenant'], ['Encryption keys', 'Per-tenant, HSM-backed'], ['Data sharing', 'None, by architecture'], ['Cross-tenant access', 'Impossible by design']], '') +
+      '</div><div class="cards3" style="margin-top:14px">' +
+      trustCard('Data residency', 'Region-pinned', 'Deployment region chosen by customer. No cross-border egress.', [['Primary region', 'Customer-selected'], ['Cross-border egress', 'None'], ['Sovereignty', 'Contractual guarantee']], '') +
+      trustCard('Business continuity & DR', 'Tested', 'RPO 15 min, RTO 60 min, tested quarterly', [['RPO', '15 minutes'], ['RTO', '60 minutes'], ['Last DR test', 'Q3 2026'], ['Backup encryption', 'AES-256, separate key']], '') +
+      trustCard('Data ownership & AI training', 'Customer-owned', '', [['Data ownership', 'Customer-owned, always'], ['Model training', 'Never used to train models'], ['Data export', 'Standard formats, on request'], ['On termination', 'Returned + destroyed, 30 days']], 'Your data belongs to you. Qare processes it under a DPA. It is never sold, shared across tenants, or used to train any model including Telos. On contract end, returned and securely destroyed.') +
+      '</div>' + prov('evidence is auditable and linkable; certifications track real engagements, not assertions');
+  }
+  function validationHTML() {
+    var systems = [['Nexus core', 'IQ/OQ/PQ', 'Validated', 'VAL-NEX-001'], ['Exchange (HIE)', 'IQ/OQ/PQ', 'Validated', 'VAL-EXC-001'], ['IRIS / Telos', 'IQ/OQ/PQ + ML', 'Validated', 'VAL-IRS-001'], ['Serialisation engine', 'IQ/OQ/PQ', 'Validated', 'VAL-SER-001'], ['Cold-chain monitor', 'IQ/OQ', 'Validated', 'VAL-CCM-001'], ['Audit-trail service', 'IQ/OQ/PQ', 'Validated', 'VAL-AUD-001'], ['E-signature service', 'IQ/OQ/PQ', 'Validated', 'VAL-SIG-001'], ['Reporting engine', 'IQ/OQ', 'In progress', 'VAL-RPT-001']];
+    var controls = ['Audit trails are immutable and timestamped', 'Electronic signatures include identity, date, meaning', 'System access is controlled and role-based', 'Data integrity checks on every record', 'Change control with impact assessment', 'Computerised system validation (CSV) per GAMP 5', 'Backup and recovery validated', 'Operational checks at regular intervals'];
+    var trail = [['2026-10-22 14:31', 'Batch BATCH-CARD-0342 released', 'Dr. K. Asante', 'e-sig VAL-SIG-4482'], ['2026-10-22 13:07', 'Deviation DV-0218 advanced to CAPA', 'QA Lead', 'e-sig VAL-SIG-4481'], ['2026-10-22 11:44', 'Cold-chain alert acknowledged', 'Ops Manager', 'e-sig VAL-SIG-4480'], ['2026-10-22 09:15', 'Lot hold placed on BATCH-ONCO-0097', 'QP', 'e-sig VAL-SIG-4479'], ['2026-10-21 16:22', 'Change request CR-114 approved', 'QA Director', 'e-sig VAL-SIG-4478']];
+    var crs = [['CR-114', 'Exchange latency threshold', 'Approved'], ['CR-113', 'Serialisation algorithm update', 'Approved'], ['CR-112', 'IRIS model v2.3 deployment', 'In review'], ['CR-111', 'Cold-chain alert threshold', 'Approved']];
+    return '<div class="split"><div>' +
+      '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Computerised system validation (CSV)</div>' +
+      '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>System</th><th>Phase</th><th>Status</th><th>Evidence</th></tr></thead><tbody>' +
+      systems.map(function(s) { var c = s[2] === 'Validated' ? 'verified' : 'claimed';
+        return '<tr><td class="nm">' + esc(s[0]) + '</td><td class="mono">' + esc(s[1]) + '</td><td><span class="chip ' + c + '">' + esc(s[2]) + '</span></td><td class="mono sub2">' + esc(s[3]) + '</td></tr>';
+      }).join('') + '</tbody></table></div></div>' +
+      '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">21 CFR Part 11 controls</div>' +
+      controls.map(function(c) { return '<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--hairline)"><span class="sev ok"></span><span style="font-size:13px">' + esc(c) + '</span></div>'; }).join('') +
+      '</div></div>' +
+      '<div><div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Audit trail (recent)</div>' +
+      '<div class="feed">' + trail.map(function(t) {
+        return '<div class="ev"><span class="tm" style="flex:0 0 auto;font-size:10px">' + esc(t[0]) + '</span><div style="flex:1"><div style="font-weight:600;font-size:12px">' + esc(t[1]) + '</div><div class="sub2">' + esc(t[2]) + ' . ' + esc(t[3]) + '</div></div><span class="chip verified"></span></div>';
+      }).join('') + '</div></div>' +
+      '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Change control log</div>' +
+      '<div class="rows">' + crs.map(function(c) { var cl = c[2] === 'Approved' ? 'verified' : 'claimed'; return glance(c[0] + ': ' + c[1], c[2], cl); }).join('') + '</div></div></div></div>' +
+      prov('every GMP-relevant action traces to an audit entry, a validated signature, and a change-control record');
+  }
+  function aiGovernanceHTML() {
+    var approvals = [['2026-10-22 14:28', 'Lot hold recommendation', 'IRIS suggested hold on BATCH-ONCO-0097', 'QP Dr. K. Asante', 'Approved'], ['2026-10-22 13:01', 'Demand reallocation', 'IRIS suggested 800 units to Chattogram', 'Ops Manager', 'Approved'], ['2026-10-22 11:40', 'EU filing risk alert', 'IRIS flagged 46-day deadline', 'Regulatory Lead', 'Acknowledged'], ['2026-10-22 09:10', 'Supplier qualification', 'IRIS flagged DhakaPack Ltd at risk', 'Procurement', 'Pending']];
+    return '<div class="split">' +
+      '<div><div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">IRIS / Telos model card</div>' +
+      '<div class="rows">' +
+      glance('Model', 'Telos v2.3 (IRIS agent)', 'verified') + glance('Purpose', 'Decision support, never decision', 'verified') + glance('Inputs', 'Exchange events, operational data', 'verified') + glance('Training data', 'Synthetic + anonymised operational', 'verified') + glance('Validation', 'Backtested on 12 mo production data', 'verified') + glance('Sensitivity', '94.2% (demand forecast)', 'verified') + glance('Specificity', '97.1% (quality deviation)', 'verified') + glance('Drift monitoring', 'Weekly, automated', 'verified') + glance('Human sign-off', 'Required for all regulated actions', 'verified') +
+      '</div></div>' +
+      '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">ISO 42001 AI management</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="sub2">AI management system implementation</span><span class="chip claimed">72% implemented</span></div>' +
+      '<div class="progress"><div class="fill warn" style="width:72%"></div></div>' +
+      '<div class="rows" style="margin-top:10px">' + glance('AI risk assessment', 'Complete', 'verified') + glance('Data governance', 'Complete', 'verified') + glance('Model lifecycle', 'Complete', 'verified') + glance('Bias monitoring', 'In progress', 'claimed') + glance('Third-party AI audit', 'Scheduled Q1 2027', 'claimed') + '</div></div></div>' +
+      '<div><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Action-approval log</div>' +
+      '<div class="sub2" style="margin-bottom:10px">Every IRIS suggestion and the human who signed it.</div>' +
+      '<div class="feed">' + approvals.map(function(a) {
+        var c = a[4] === 'Approved' ? 'verified' : 'claimed';
+        return '<div class="ev"><span class="tm" style="flex:0 0 auto;font-size:10px">' + esc(a[0]) + '</span><div style="flex:1"><div style="font-weight:600;font-size:12px">' + esc(a[1]) + '</div><div class="sub2">' + esc(a[2]) + '</div><div class="sub2">' + esc(a[3]) + ' . ' + esc(a[4]) + '</div></div><span class="chip ' + c + '"></span></div>';
+      }).join('') + '</div>' +
+      '<div class="pitch" style="margin-top:14px"><div class="k">The hard rule</div><div class="l">IRIS never auto-actions a regulated decision. A licensed, identified person signs every quality, safety and regulatory call. The approval log is immutable and auditable.</div></div>' +
+      '</div></div></div>' + prov('AI governance is architectural; every suggestion traces to a model version and a human signatory');
+  }
+
+  /* ---------- N4: integration sub-views ---------- */
+  function intSubtabs() {
+    var tabs = [['systems','Connected systems'],['architecture','Architecture'],['governance','Data governance']];
+    return '<div class="subtabs" style="margin-bottom:16px;display:flex;gap:6px;flex-wrap:wrap">' + tabs.map(function(t) {
+      return '<button class="btn btn-sm' + (intTab === t[0] ? ' btn-primary' : ' btn-ghost') + '" data-inttab="' + t[0] + '">' + esc(t[1]) + '</button>';
+    }).join('') + '</div>';
+  }
+  function intArchHTML() {
+    var flows = [
+      ['Pharmacy EHR', 'HL7 FHIR R4', 'Dispensing, Rx, demand signal', 'Nexus', 'Inbound', '< 200ms'],
+      ['Nexus', 'native', 'Verified outcomes, EESG metrics', 'Qare HIE', 'Bidirectional', '48ms'],
+      ['SAP S/4HANA', 'EDI + API', 'Purchase orders, GR, invoices', 'Nexus', 'Bidirectional', '< 500ms'],
+      ['MES (plant floor)', 'OPC-UA', 'Batch events, OEE, line status', 'Nexus', 'Inbound', '< 100ms'],
+      ['LIMS (QC labs)', 'HL7 / API', 'Test results, CoA', 'Nexus', 'Inbound', '< 300ms'],
+      ['DSCSA network', 'EPCIS / GS1', 'Serial verification, T3 data', 'Nexus', 'Bidirectional', '< 1s'],
+      ['Carrier / 3PL', 'EDI 214/856', 'Shipment status, cold-chain', 'Nexus', 'Inbound', '< 2s'],
+      ['Nexus', 'signed records', 'Verified outcomes + capital ask', 'GIC', 'Outbound', 'on publish']
+    ];
+    return '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Data-flow architecture</div>' +
+      '<div class="sub2" style="margin-bottom:12px">Nexus sits between the systems a manufacturer already runs and the exchange. Standard protocols in, verified records out. No data re-keyed.</div>' +
+      '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Source</th><th>Protocol</th><th>Data</th><th>Destination</th><th>Direction</th><th>SLA</th></tr></thead><tbody>' +
+      flows.map(function(f) { return '<tr><td class="nm">' + esc(f[0]) + '</td><td class="mono">' + esc(f[1]) + '</td><td class="sub2">' + esc(f[2]) + '</td><td class="nm">' + esc(f[3]) + '</td><td>' + esc(f[4]) + '</td><td class="mono">' + esc(f[5]) + '</td></tr>'; }).join('') +
+      '</tbody></table></div></div>' +
+      '<div class="pitch"><div class="k">Augments, does not replace</div><div class="l">Nexus reads from your SAP, MES, LIMS and carrier feeds. It does not ask you to rip and replace them. It adds the exchange, the EESG rail, and the GIC capital path on top of what you already run.</div></div>' +
+      prov('every integration is monitored; a failed feed raises here and degrades the dependent module, never silently');
+  }
+  function intGovHTML() {
+    var rules = [['Patient identifiers', 'Never leaves the tenant', 'Encryption + access control', 'verified'], ['Batch records', 'Tenant-scoped, audit-trailed', '21 CFR Part 11 controls', 'verified'], ['Demand signals', 'Anonymised at the pharmacy', 'Drug + region only, no patient', 'verified'], ['EESG metrics', 'Aggregated, no PII', 'Published only when Verified', 'verified'], ['GIC records', 'Signed, anonymised, traceable', 'Double-key consent', 'verified'], ['Cold-chain telemetry', 'Shipment-level, no patient', 'Retained 7 years', 'verified']];
+    return '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Master-data governance</div>' +
+      '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Data domain</th><th>Residency rule</th><th>Control</th><th></th></tr></thead><tbody>' +
+      rules.map(function(r) { return '<tr><td class="nm">' + esc(r[0]) + '</td><td class="sub2">' + esc(r[1]) + '</td><td class="sub2">' + esc(r[2]) + '</td><td><span class="chip ' + r[3] + '"></span></td></tr>'; }).join('') +
+      '</tbody></table></div></div>' +
+      '<div class="cards3">' +
+      trustCard('Golden record ownership', 'Defined', 'Each data domain has a single owner and a reconciliation rule', [['Patient', 'Source EHR (never Nexus)'], ['Drug master', 'Regulatory (CMC)'], ['Batch record', 'QA / QP'], ['Demand', 'Exchange (aggregated)']], '') +
+      trustCard('Data retention', 'Compliant', 'Retention periods per regulatory requirement', [['Batch records', '25 years (FDA)'], ['Adverse events', '10 years post-expiry'], ['Audit trail', 'Life of system + 5 years'], ['Cold-chain logs', '7 years']], '') +
+      trustCard('Breach notification', 'Tested', 'Incident response tested quarterly', [['Detection', '< 1 hour'], ['Assessment', '< 4 hours'], ['Notification', '< 72 hours (GDPR)'], ['Post-incident review', 'Within 14 days']], '') +
+      '</div>' + prov('data governance is not a document; it is enforced by architecture per domain');
+  }
+
+  /* ---------- N6: ROI ---------- */
+  function roiHTML() {
+    var sc = scale();
+    var yr = [
+      ['Stockout prevention (live demand vs quarterly estimate)', money(Math.round(8200000 * sc), '$'), 'Live dispensing detects demand shifts 3 to 6 weeks earlier'],
+      ['Batch release cycle time reduction', money(Math.round(3100000 * sc), '$'), 'Validated e-sig + audit trail cut release from 14d to 5d'],
+      ['Serialisation / counterfeit loss avoidance', money(Math.round(2400000 * sc), '$'), 'DSCSA + EU FMD compliance avoids market withdrawal'],
+      ['Cold-chain excursion reduction', money(Math.round(1800000 * sc), '$'), 'Real-time monitoring vs manual logging cuts loss by 60%'],
+      ['Working-capital improvement (DSO reduction)', money(Math.round(4600000 * sc), '$'), 'Operational visibility reduces DSO by 8 to 12 days'],
+      ['Regulatory filing acceleration', money(Math.round(1200000 * sc), '$'), 'Single data backbone cuts filing prep by 40%'],
+      ['Capital raised against verified outcomes (GIC)', money(Math.round(1200000 * sc), '$'), 'Access to capital unavailable without verified EESG']
+    ];
+    var total = Math.round((8200000 + 3100000 + 2400000 + 1800000 + 4600000 + 1200000 + 1200000) * sc);
+    var cost = Math.round(2800000 * sc);
+    var payback = Math.round(cost / (total / 12));
+    return head('ROI & business case', 'The measurable return from operating on Nexus, computed from the same data the rest of the system runs on.') +
+      kpiRow([[money(total, '$'), 'projected annual value', false], [money(cost, '$'), 'annual platform cost', false], [(total / cost).toFixed(1) + 'x', 'ROI multiple', false], [payback + ' months', 'payback period', false]]) +
+      '<div class="card shadow" style="margin-bottom:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Value drivers</div>' +
+      '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Value driver</th><th class="num">Annual value</th><th>Mechanism</th></tr></thead><tbody>' +
+      yr.map(function(r) { return '<tr><td class="nm">' + esc(r[0]) + '</td><td class="num" style="font-weight:600">' + r[1] + '</td><td class="sub2">' + esc(r[2]) + '</td></tr>'; }).join('') +
+      '<tr style="border-top:2px solid var(--ink)"><td class="nm" style="font-weight:700">Total projected annual value</td><td class="num" style="font-weight:700">' + money(total, '$') + '</td><td></td></tr>' +
+      '</tbody></table></div></div>' +
+      '<div class="cards3">' +
+      trustCard('Implementation timeline', '16 weeks', 'Phased deployment: core + exchange, then modules', [['Phase 1 (wk 1 to 4)', 'Core, exchange, auth, compliance'], ['Phase 2 (wk 5 to 8)', 'Supply, manufacturing, quality'], ['Phase 3 (wk 9 to 12)', 'Serialisation, PV, regulatory'], ['Phase 4 (wk 13 to 16)', 'EESG, GIC, go-live']], '') +
+      trustCard('Risk factors', 'Managed', 'Implementation risks and mitigations', [['ERP integration', 'Pre-built SAP connector, 3-day setup'], ['Change management', 'Role-based onboarding, IRIS assist'], ['Validation', 'GAMP 5 CSV included in timeline'], ['Data migration', 'Parallel run, reconciliation gate']], '') +
+      trustCard('Comparable deployments', 'Referenced', 'Anonymised results from comparable deployments', [['Mid-size generics (SEA)', 'ROI realised in 5 months'], ['Large innovator (EMEA)', '32% stockout reduction, year 1'], ['Contract manufacturer', 'Batch release 14d to 4d']], 'Named references available under NDA.') +
+      '</div>' + prov('ROI is computed from operational data, not a slide deck; every driver traces to a live module');
+  }
+
+  /* ---------- N7: references ---------- */
+  function referencesHTML() {
+    var refs = [
+      { type: 'Case study', title: 'Mid-size generics manufacturer, Southeast Asia', metric: '32% stockout reduction, 5-month payback', detail: 'Deployed core + supply + manufacturing + quality + serialisation. Live dispensing replaced quarterly sampling for demand planning. Cold-chain breach detection went from 48h manual to < 1h automated.', status: 'Published' },
+      { type: 'Case study', title: 'Large innovator, EMEA', metric: 'Batch release 14d to 4d, $4.6M working-capital improvement', detail: 'Full deployment including GxP validation. Validated e-signature and audit trail replaced paper-based release. DSO reduced by 11 days.', status: 'Published' },
+      { type: 'Case study', title: 'Contract manufacturer, South Asia', metric: 'OEE +8pp, right-first-time 97% to 99.4%', detail: 'Manufacturing + quality + serialisation. MES integration via OPC-UA. Deviation cycle time cut by 60%.', status: 'Published' },
+      { type: 'Analyst', title: 'Gartner peer insights', metric: '4.6 / 5.0 (23 reviews)', detail: 'Rated in the Leaders quadrant for pharma operations platforms, H1 2026. Strengths: exchange architecture, EESG integration, GxP validation.', status: 'Published' },
+      { type: 'Analyst', title: 'IDC MarketScape', metric: 'Major player, pharma digital ops', detail: 'Called out for live-demand approach and verified-impact capital pathway. Noted: "The only platform that connects operational compliance to capital markets via a verified framework."', status: 'Published' },
+      { type: 'Compliance', title: 'SOC 2 Type II attestation', metric: '12-month report, 0 exceptions', detail: 'Trust services: security, availability, confidentiality. Full report available under NDA.', status: 'Current' },
+      { type: 'Compliance', title: 'ISO 27001 + 27701 certificates', metric: 'Certified, annual surveillance', detail: 'ISMS + PIMS certified. Covers all environments and data processing.', status: 'Current' },
+      { type: 'Compliance', title: '21 CFR Part 11 validation package', metric: '7 of 8 systems validated', detail: 'CSV documentation per GAMP 5. IQ/OQ/PQ protocols and reports available for audit.', status: 'Current' }
+    ];
+    return head('Proof & references', 'Case studies, analyst coverage, and compliance artefacts. Named references available under NDA.') +
+      '<div class="cards3">' + refs.map(function(r) {
+        var c = r.status === 'Current' ? 'verified' : 'claimed';
+        return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--mid)">' + esc(r.type) + '</span><span class="chip ' + c + '">' + esc(r.status) + '</span></div>' +
+          '<div style="font-family:var(--font-brand);font-weight:700;font-size:13px;margin-bottom:6px">' + esc(r.title) + '</div>' +
+          '<div style="font-weight:600;font-size:13px;color:var(--accent);margin-bottom:6px">' + esc(r.metric) + '</div>' +
+          '<div class="sub2">' + esc(r.detail) + '</div></div>';
+      }).join('') + '</div>' +
+      '<div class="pitch" style="margin-top:16px"><div class="k">Request a reference call</div><div class="l">Named customer references, full case studies, and compliance artefacts (SOC 2 report, ISO certificates, validation packages) are available under NDA. Contact your Qare account team.</div></div>' +
+      prov('every reference traces to a real deployment; nothing here is aspirational');
+  }
+
   /* ================= THE ELEMENT LIBRARY =================
      Each element declares its three-rail contract: which exchange events it reads
      and writes, which EESG metrics it emits, and whether its verified outcomes can
@@ -258,6 +418,8 @@
       render: function () {
         return head('Manufacturing', 'Plant performance and batch execution at the complex. Batches progress live; a deviation feeds Quality.') +
           kpiRow([['82%', 'OEE', false], [batches.filter(function (b) { return b.status === 'Running'; }).length, 'batches in build', false], ['99.1%', 'right first time', false], [openDevs().length, 'deviations open', false, 'k-dev']]) +
+          '<div class="split" style="margin-bottom:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">OEE trend, 6 months</div>' + UI.lineChart([79, 81, 78, 84, 80, 82], {h:80,labels:['May','Jun','Jul','Aug','Sep','Oct']}) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Output by line, week</div>' + UI.barsChart([{l:'Line 1',v:[420]},{l:'Line 2',v:[380]},{l:'Line 3',v:[290]}], {h:80}) + '</div></div>' +
           '<div class="qt-wrap"><table class="qt"><thead><tr><th>Line</th><th>Product</th><th>Batch</th><th class="num">OEE</th><th>Progress</th><th>Status</th></tr></thead><tbody id="no-batch">' + batchRows() + '</tbody></table></div>' +
           prov('every batch carries provenance from raw material to release; a deviation raises automatically in Quality');
       } },
@@ -284,6 +446,9 @@
       render: function () {
         return head('Quality', 'Deviations, CAPA and the holds that gate release. A cold-chain breach in Relay lands here as a deviation automatically.') +
           kpiRow([[openDevs().length, 'open deviations', false, 'k-dev'], [deviations.filter(function (d) { return d.status === 'CAPA'; }).length, 'in CAPA', false], ['98.7%', 'release conformance', false], [batches.filter(function (b) { return b.status === 'Hold'; }).length, 'batches on hold', false]]) +
+          '<div class="cards3" style="margin-bottom:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Deviation trend, 6 months</div>' + UI.barsChart([{l:'May',v:[4,1]},{l:'Jun',v:[3,2]},{l:'Jul',v:[5,1]},{l:'Aug',v:[2,0]},{l:'Sep',v:[3,1]},{l:'Oct',v:[openDevs().length,deviations.filter(function(d){return d.status==='CAPA'}).length]}], {labels:['Open','CAPA'],h:80}) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Release conformance trend</div>' + UI.lineChart([98.1, 98.4, 98.2, 98.9, 98.5, 98.7], {h:80,labels:['May','Jun','Jul','Aug','Sep','Oct']}) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">CAPA aging</div><div class="rows">' + glance('< 30 days', '2', 'verified') + glance('30 to 60 days', '1', 'claimed') + glance('> 60 days', '0', 'verified') + '</div></div></div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Deviations</div><div id="no-dev">' + devRows() + '</div></div>' +
           '<div class="qt-wrap" style="margin-top:16px"><table class="qt"><thead><tr><th>Batch</th><th>Product</th><th>Disposition</th><th>Note</th></tr></thead><tbody>' + dispoRows() + '</tbody></table></div>' +
           prov('a cold-chain breach raised in Relay places the affected lot on hold here automatically');
@@ -296,6 +461,9 @@
       render: function () {
         return head('Pharmacovigilance', 'Adverse-event signals on a real dispensing denominator, not an estimate.') +
           kpiRow([['4', 'clustered AEs, 90d', false], ['1', 'signal under evaluation', false], ['CardiNex-10', 'product', false], ['oedema', 'MedDRA term', false]]) +
+          '<div class="split" style="margin-bottom:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">AE signal timeline</div>' + UI.barsChart([{l:'Jul',v:[1,0]},{l:'Aug',v:[0,1]},{l:'Sep',v:[2,0]},{l:'Oct',v:[1,1]}], {labels:['CardiNex-10','OncoNex-100'],h:80}) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Signal assessment</div><div class="rows">' +
+          glance('Signal', 'Peripheral oedema, CardiNex-10, 65+', 'claimed') + glance('Rate', '0.22 per 1000 dispensed (real denominator)', 'verified') + glance('Background rate', '0.18 per 1000 (literature)', 'verified') + glance('Assessment', 'Under evaluation, QP to decide', 'claimed') + '</div></div></div>' +
           '<div class="card shadow"><div class="sub" style="font-size:13px">Four peripheral oedema reports on CardiNex-10 in the 65+ group in 90 days cross the signal threshold. Because dispensing is on the exchange the denominator is real, so the rate is a measurement, not a guess. A qualified person decides whether to escalate to the regulator.</div></div>' +
           prov('a real dispensing denominator turns a cluster of reports into a measurable rate');
       } },
@@ -308,6 +476,7 @@
         var pipe = [['Submission prepared', 8, 'claimed'], ['In agency review', 11, 'claimed'], ['Queries to answer', 3, 'inconsistent'], ['Approved, 12 mo', 27, 'verified']];
         return head('Regulatory', 'Registrations by market, the submission pipeline, and the obligations in flight.') +
           kpiRow([['62', 'markets', false], ['60', 'in good standing', false], ['22', 'submissions in flight', false], ['46d', 'nearest deadline', false]]) +
+          '<div class="card shadow" style="margin-bottom:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Submission pipeline</div>' + UI.barsChart([{l:'Prepared',v:[8]},{l:'In review',v:[11]},{l:'Queries',v:[3]},{l:'Approved (12mo)',v:[27]}], {h:70}) + '</div>' +
           '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Registrations by market</div>' +
           '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Market</th><th>Product</th><th>Status</th><th>Next action</th></tr></thead><tbody>' +
           [['US FDA', 'CardiNex-10', 'Approved', 'annual report due'], ['EU (AGES)', 'CardiNex-10', 'Variation', 'due 46d, 2 docs missing'], ['TGA', 'OncoNex-100', 'Approved', 'none'], ['WHO PQ', 'CardiNex-10', 'In review', 'respond to queries'], ['NAFDAC', 'OncoNex-100', 'Submitted', 'awaiting acknowledgement']].map(function (r) {
@@ -328,6 +497,8 @@
         var t = totals();
         return head('Demand', 'Live demand by product and region, summed from every connected pharmacy.') +
           kpiRow([[t.units, 'packs pulled, live', false, 'k-units'], [money(t.value, '$'), 'ex-factory value', false, 'k-value'], [demand.length, 'signals, session', false], [REGIONS.length, 'regions active', false]]) +
+          '<div class="split" style="margin-bottom:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Demand by region, this quarter</div>' + UI.barsChart(REGIONS.map(function(r) { var c = demand.filter(function(d){return d.region===r}).length; return {l:r,v:[c]}; }), {h:80}) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Product mix</div>' + UI.barsChart([{l:'CardiNex-10',v:[demand.filter(function(d){return d.code==='CARDINEX-10'}).length]},{l:'OncoNex-100',v:[demand.filter(function(d){return d.code!=='CARDINEX-10'}).length]}], {h:80}) + '</div></div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Signal stream</div>' + feedHTML(12) + '</div>' +
           prov('demand is the sum of real dispensing events, not a forecast model');
       } },
@@ -342,6 +513,8 @@
         var cash = [['Receivables', Math.round(42000000 * sc), 'claimed'], ['Inventory', Math.round(28000000 * sc), 'claimed'], ['Payables', Math.round(-19000000 * sc), 'verified'], ['Net working capital', Math.round(51000000 * sc), '']];
         return head('Finance', 'Revenue, cost and the working-capital pressure behind operations, on one operational ledger.') +
           kpiRow([[money(Math.round(400000000 * sc), '$'), 'revenue, year', false], ['18%', 'EBITDA margin', false], ['47d', 'days sales outstanding', false], [money(Math.round(320000 * sc), '$'), 'receivables overdue', false]]) +
+          '<div class="split" style="margin-bottom:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Revenue trend, 6 months</div>' + UI.lineChart([Math.round(58*sc),Math.round(62*sc),Math.round(60*sc),Math.round(68*sc),Math.round(71*sc),Math.round(73*sc)], {h:80,labels:['May','Jun','Jul','Aug','Sep','Oct'],pre:'$',suf:'M'}) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">EBITDA margin trend</div>' + UI.lineChart([16.2, 17.1, 16.8, 18.4, 17.9, 18.0], {h:80,labels:['May','Jun','Jul','Aug','Sep','Oct'],suf:'%'}) + '</div></div>' +
           '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Working capital</div>' +
           cash.map(function (c) { return '<div class="row" style="padding:8px 10px"><span class="m">' + esc(c[0]) + '</span><span style="display:flex;gap:8px;align-items:center"><span class="v">' + money(c[1], '$') + '</span>' + (c[2] ? '<span class="chip ' + c[2] + '"></span>' : '') + '</span></div>'; }).join('') + '</div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Receivables aging</div>' +
@@ -363,6 +536,9 @@
       render: function () {
         return head('Environment', 'The pharma-specific environmental position: carbon, water, API effluent and waste, measured from operations.') +
           kpiRow([['+' + env.carbon + '%', 'carbon vs target', false, 'k-carbon'], [env.water + '%', 'water recycled', false], ['within', 'API effluent consent', false], [env.waste + '%', 'waste diverted', false]]) +
+          '<div class="cards3" style="margin-bottom:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Carbon intensity trend</div>' + UI.lineChart([18, 16, 15, 14, 13, env.carbon], {h:80,labels:['May','Jun','Jul','Aug','Sep','Oct'],suf:'%'}) + '<div class="sub2" style="margin-top:4px">Target: 0% (at or below baseline)</div></div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Water recycling trend</div>' + UI.lineChart([64, 66, 68, 69, 70, env.water], {h:80,labels:['May','Jun','Jul','Aug','Sep','Oct'],suf:'%'}) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Waste diversion trend</div>' + UI.lineChart([80, 82, 83, 84, 85, env.waste], {h:80,labels:['May','Jun','Jul','Aug','Sep','Oct'],suf:'%'}) + '</div></div>' +
           '<div class="card shadow"><div class="sub" style="font-size:13px">Carbon intensity is ' + env.carbon + '% above target, the one red line, and it blocks the carbon-credit line on the Commons until it is verified down. API effluent is within consent, the measure most manufacturers cannot show. Each metric is an EESG emitter read straight from operations, no separate data collection.</div></div>' +
           prov('environment reads the operational record; effluent and waste are first-class, not just carbon');
       } },
@@ -384,19 +560,28 @@
     { key: 'integration', label: 'Data & Integration', ic: 'DI', group: 'Trust', desc: 'Connected systems and the standards that move data in and out.',
       rails: { exchange: ['DEMAND_SIGNAL', 'COLD_CHAIN_ALERT'], eesg: [{ pillar: 'Governance', front: 'Supply integrity and pharmacovigilance', measure: 'Integrations healthy', value: '9 of 9', status: 'Verified' }], gic: false }, agents: ['Integration', 'IT'],
       render: function () {
-        var sys = [['SAP S/4HANA (ERP)', 'EDI + API', 'Healthy'], ['MES, plant floor', 'OPC-UA', 'Healthy'], ['LIMS, QC labs', 'HL7 / API', 'Healthy'], ['QMS, deviations', 'API', 'Healthy'], ['Pharmacy EHRs', 'HL7 FHIR R4', 'Healthy'], ['DSCSA network', 'EPCIS / GS1', 'Healthy'], ['Carrier / 3PL', 'EDI 214/856', 'Healthy'], ['Qäre HIE exchange', 'native', 'Healthy'], ['Global Impact Commons', 'signed records', 'Healthy']];
+        var sys = [['SAP S/4HANA (ERP)', 'EDI + API', 'Healthy', '< 500ms', '99.99%'], ['MES, plant floor', 'OPC-UA', 'Healthy', '< 100ms', '99.97%'], ['LIMS, QC labs', 'HL7 / API', 'Healthy', '< 300ms', '99.95%'], ['QMS, deviations', 'API', 'Healthy', '< 200ms', '99.99%'], ['Pharmacy EHRs', 'HL7 FHIR R4', 'Healthy', '< 200ms', '99.96%'], ['DSCSA network', 'EPCIS / GS1', 'Healthy', '< 1s', '99.94%'], ['Carrier / 3PL', 'EDI 214/856', 'Healthy', '< 2s', '99.91%'], ['Qäre HIE exchange', 'native', 'Healthy', '48ms', '99.99%'], ['Global Impact Commons', 'signed records', 'Healthy', 'on publish', '99.99%']];
+        var content = '';
+        if (intTab === 'architecture') content = intArchHTML();
+        else if (intTab === 'governance') content = intGovHTML();
+        else content = '<div class="qt-wrap"><table class="qt"><thead><tr><th>System</th><th>Standard</th><th>Status</th><th>Latency</th><th>Uptime, 90d</th></tr></thead><tbody>' +
+          sys.map(function (s) { return '<tr><td class="nm">' + esc(s[0]) + '</td><td class="mono">' + esc(s[1]) + '</td><td><span class="chip verified">' + esc(s[2]) + '</span></td><td class="mono">' + esc(s[3]) + '</td><td class="mono">' + esc(s[4]) + '</td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('every integration is monitored; a failed feed raises here and degrades the dependent module, never silently');
         return head('Data & Integration', 'Nexus connects to the systems a manufacturer already runs. Standard protocols in, verified records out. No data re-keyed.') +
           kpiRow([['9', 'integrations live', false], ['HL7 FHIR R4', 'clinical standard', false], ['EPCIS / GS1', 'serialisation', false], ['48ms', 'exchange latency', false]]) +
-          '<div class="qt-wrap"><table class="qt"><thead><tr><th>System</th><th>Standard</th><th>Status</th></tr></thead><tbody>' +
-          sys.map(function (s) { return '<tr><td class="nm">' + esc(s[0]) + '</td><td class="mono">' + esc(s[1]) + '</td><td><span class="chip verified">' + esc(s[2]) + '</span></td></tr>'; }).join('') +
-          '</tbody></table></div>' + prov('every integration is monitored; a failed feed raises here and degrades the dependent module, never silently');
+          intSubtabs() + content;
       } },
 
     { key: 'compliance', label: 'Security & Compliance', ic: 'CP', group: 'Trust', desc: 'HIPAA, ISO, 21 CFR Part 11, DSCSA and the security engine, checked continuously.',
       rails: { exchange: [], eesg: UI.trust.eesgMetrics('pharma'), gic: true }, agents: ['Compliance', 'Security', 'Quality'],
       render: function () {
+        var content = '';
+        if (compTab === 'evidence') content = evidenceVaultHTML();
+        else if (compTab === 'validation') content = validationHTML();
+        else if (compTab === 'aigovern') content = aiGovernanceHTML();
+        else content = UI.trust.render({ sector: 'pharma' });
         return head('Security & Compliance', 'Compliance and security are architectural, not a report. Pharma is heavily regulated; nothing here is light.') +
-          UI.trust.render({ sector: 'pharma' });
+          compSubtabs() + content;
       } },
 
     { key: 'eesg', label: 'EESG position', ic: 'ES', group: 'Impact', core: true,
@@ -429,6 +614,18 @@
           prov('the GIC rail; verified EESG outcomes from any enabled module can fund here');
       } },
 
+    { key: 'roi', label: 'ROI & business case', ic: 'RO', group: 'Commercial',
+      desc: 'The measurable return, computed from operational data.',
+      rails: { exchange: [], eesg: [{ pillar: 'Economic', front: 'Affordability and financial protection', measure: 'Platform ROI multiple', valueFn: function () { var sc = scale(); return ((8200000+3100000+2400000+1800000+4600000+1200000+1200000)*sc / (2800000*sc)).toFixed(1) + 'x'; }, status: 'Verified' }], gic: false },
+      agents: ['Finance', 'Operations', 'Capital'],
+      render: function () { return roiHTML(); } },
+
+    { key: 'references', label: 'Proof & references', ic: 'RF', group: 'Commercial',
+      desc: 'Case studies, analyst coverage, and compliance artefacts.',
+      rails: { exchange: [], eesg: [], gic: false },
+      agents: ['Commercial', 'Compliance'],
+      render: function () { return referencesHTML(); } },
+
     { key: 'library', label: 'Module library', ic: 'LB', group: 'Impact', core: true,
       desc: 'The full element catalogue. Turn modules on per customer.',
       rails: { exchange: [], eesg: [], gic: false },
@@ -446,7 +643,7 @@
   /* ---------- per-tenant manifest + live overrides ---------- */
   var MANIFEST = {
     'ORG-PHARMA-SML': ['command', 'supply', 'manufacturing', 'quality', 'demand', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
-    'ORG-PHARMA-MID': ['command', 'sop', 'supply', 'procurement', 'manufacturing', 'serialization', 'quality', 'safety', 'regulatory', 'demand', 'finance', 'integration', 'compliance', 'environment', 'workforce', 'eesg', 'impact', 'library'],
+    'ORG-PHARMA-MID': ['command', 'sop', 'supply', 'procurement', 'manufacturing', 'serialization', 'quality', 'safety', 'regulatory', 'demand', 'finance', 'integration', 'compliance', 'environment', 'workforce', 'roi', 'references', 'eesg', 'impact', 'library'],
     'ORG-NEXAGEN': 'all'
   };
   var overrides = {};
@@ -549,7 +746,9 @@
       demand: ['Which product is moving?'], supply: ['What should I reallocate?'],
       safety: ['Explain the CardiNex signal'], regulatory: ['What is the EU filing risk?'],
       finance: ['What is the working-capital pressure?'], procurement: ['Which supplier is at risk?'],
-      sop: ['Are we within capacity?'], workforce: ['Is training current?']
+      sop: ['Are we within capacity?'], workforce: ['Is training current?'],
+      roi: ['What is the ROI?', 'What is the payback period?', 'What is the biggest value driver?'],
+      references: ['Who else uses Nexus?', 'What do analysts say?', 'Show me the compliance artefacts']
     };
     return { label: m.label || '', suggestions: sMap[mod] || [] };
   }
@@ -585,6 +784,11 @@
     if (/supplier|procure/.test(s)) return A('DhakaPack Ltd is at risk, packaging score 58. I would qualify an alternate before it gates a batch. Procurement owns qualification.', [{ label: 'Qualify alternate', reply: 'Alternate supplier added to the qualification queue. Procurement runs the audit.' }]);
     if (/capacity|sop|forecast|plan/.test(s)) return A('Capacity utilisation is 72% and the forecast tracks within band, so you are inside capacity. The forecast is built from live dispensing, so S&OP and operations never diverge.', []);
     if (/training|workforce|hse|safety incident/.test(s)) return A('GMP training is 94% current with 12 qualifications overdue; lost-time injury rate is 0.3. Both are EESG emitters tied to the record that gates release.', []);
+    if (/roi|return|business case|payback|cost/.test(s)) { var sc = scale(), total = Math.round((8200000+3100000+2400000+1800000+4600000+1200000+1200000)*sc); return A('Projected annual value is ' + money(total, '$') + ' against a ' + money(Math.round(2800000*sc), '$') + ' platform cost, a ' + (total/(2800000*sc)).toFixed(1) + 'x multiple. The biggest driver is stockout prevention from live demand, worth ' + money(Math.round(8200000*sc), '$') + '. Payback is under 2 months.', [{ label: 'Open ROI', kind: 'evidence', q: 'roi' }]); }
+    if (/reference|case study|analyst|proof|gartner/.test(s)) return A('Three published case studies from comparable deployments, plus Gartner and IDC coverage. SOC 2, ISO 27001/27701, and the Part 11 validation package are current. Named references under NDA.', [{ label: 'Open references', kind: 'evidence', q: 'reference' }]);
+    if (/security|data own|tenancy|soc|pen test|encrypt|privacy/.test(s)) return A('Single-tenant architecture with per-tenant HSM-backed encryption keys. SOC 2 Type II attested, last pen test clean (Sep 2026, 0 critical). Your data is yours, never used to train models, returned and destroyed on contract end within 30 days. Full evidence vault in Security & Compliance.', [{ label: 'Open evidence vault', kind: 'evidence', q: 'evidence vault' }]);
+    if (/valid|csv|part 11|gamp|audit trail|e.sig/.test(s)) return A('7 of 8 systems validated per GAMP 5 CSV. Audit trails are immutable with timestamps. Electronic signatures include identity, date, and meaning. Change control runs through impact assessment. The reporting engine is the one still in progress.', [{ label: 'Open validation', kind: 'evidence', q: 'validation' }]);
+    if (/ai gov|model card|iris gov|42001|bias/.test(s)) return A('Telos v2.3 powers IRIS. Sensitivity 94.2% on demand, specificity 97.1% on quality deviations. Drift monitored weekly. ISO 42001 is at 72%. The hard rule: IRIS never auto-actions a regulated decision. Every suggestion has a human signatory in the approval log.', [{ label: 'Open AI governance', kind: 'evidence', q: 'ai governance' }]);
     return A('I read that from ' + cur.name + '\'s own records on the exchange. Ask me about demand, the cold chain, quality, serialisation, the environment, the EESG position or the capital ask. I advise; a licensed person makes every clinical, quality and regulatory call.');
   }
 
@@ -645,6 +849,8 @@
 
   /* ---------- events + actions ---------- */
   document.addEventListener('click', function (e) {
+    var ct = e.target.getAttribute('data-comptab'); if (ct) { compTab = ct; render(); return; }
+    var it = e.target.getAttribute('data-inttab'); if (it) { intTab = it; render(); return; }
     var tn = e.target.getAttribute('data-tenant'); if (tn) { cur = X.org(tn); mod = 'command'; seedBaseline(); foldExchange(); render(); return; }
     var mm = e.target.closest('[data-mod]'); if (mm) { mod = mm.getAttribute('data-mod'); render(); return; }
     var tg = e.target.getAttribute('data-toggle'); if (tg) { var mobj = moduleByKey(tg); if (mobj && !mobj.core) { if (!overrides[cur.id]) overrides[cur.id] = {}; overrides[cur.id][tg] = !isOn(tg); render(); } return; }
