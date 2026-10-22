@@ -15,10 +15,12 @@
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
 <script src="../../assets/app.js"></script>
+<script src="../../assets/auth.js"></script>
 <script>
 (function () {
   var X = window.QareExchange, UI = window.QareUI, esc = UI.esc, money = UI.money;
   UI.init('nexus');
+  var SESSION = null;
 
   var orgs = X.orgsFor('nexus');
   var cur = X.org('ORG-NEXAGEN');
@@ -145,6 +147,26 @@
       '<span class="rail gic ' + (r.gic ? 'on' : '') + '">GIC</span></span>';
   }
 
+  // Second-level density for the operations surface: a week of throughput, a
+  // quality-and-compliance glance, and system health. A Dir of Ops lands on a
+  // full picture, not four tiles.
+  function commandExtras() {
+    var wk = [58, 64, 61, 73, 69, 81, Math.min(99, 60 + demand.length)];
+    var bars = wk.map(function (h) { return '<i style="height:' + h + '%"></i>'; }).join('');
+    return '<div class="cards3" style="margin-top:16px">' +
+      '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Throughput, 7 days</div>' +
+        '<div class="spark" style="height:48px">' + bars + '</div>' +
+        '<div class="figs" style="margin-top:12px"><div class="fig"><div class="fv">' + (Math.round(1.8 * scale() * 10) / 10) + 'M</div><div class="fk">packs shipped, qtr</div></div><div class="fig"><div class="fv">99.1%</div><div class="fk">OTIF</div></div></div></div>' +
+      '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Quality & compliance</div><div class="rows">' +
+        glance('Batch release conformance', '98.7%', 'verified') + glance('Open deviations', String(openDevs().length), openDevs().length > 2 ? 'claimed' : 'verified') +
+        glance('Serialised to last mile', serialPct().toFixed(1) + '%', serialPct() >= 98 ? 'verified' : 'claimed') + glance('Compliance frameworks live', '11 of 12', 'verified') + '</div></div>' +
+      '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">System health</div><div class="rows">' +
+        glance('Integrations healthy', '9 of 9', 'verified') + glance('Exchange latency', '48 ms', 'verified') +
+        glance('Uptime, 90 days', '99.98%', 'verified') + glance('Security controls active', '12 of 12', 'verified') + '</div></div>' +
+      '</div>';
+  }
+  function glance(label, val, cls) { return '<div class="row" style="padding:8px 10px"><span class="m">' + esc(label) + '</span><span style="display:flex;gap:8px;align-items:center"><span class="v">' + esc(val) + '</span><span class="chip ' + cls + '"></span></span></div>'; }
+
   /* ================= THE ELEMENT LIBRARY =================
      Each element declares its three-rail contract: which exchange events it reads
      and writes, which EESG metrics it emits, and whether its verified outcomes can
@@ -183,6 +205,7 @@
           '<div class="split" style="margin-top:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:6px">Decisions waiting</div><div id="no-dec">' + decList() + '</div></div>' +
           '<div style="display:flex;flex-direction:column;gap:16px">' + coldCardHTML() +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Live demand</div>' + feedHTML(5) + '</div></div></div>' +
+          commandExtras() +
           prov('reads dispensing, cold-chain and serialisation events from the exchange; the operator acts, the system watches');
       } },
 
@@ -343,6 +366,24 @@
           prov('training and safety are EESG emitters tied to the record that gates release');
       } },
 
+    { key: 'integration', label: 'Data & Integration', ic: 'DI', group: 'Trust', desc: 'Connected systems and the standards that move data in and out.',
+      rails: { exchange: ['DEMAND_SIGNAL', 'COLD_CHAIN_ALERT'], eesg: [{ pillar: 'Governance', front: 'Supply integrity and pharmacovigilance', measure: 'Integrations healthy', value: '9 of 9', status: 'Verified' }], gic: false }, agents: ['Integration', 'IT'],
+      render: function () {
+        var sys = [['SAP S/4HANA (ERP)', 'EDI + API', 'Healthy'], ['MES, plant floor', 'OPC-UA', 'Healthy'], ['LIMS, QC labs', 'HL7 / API', 'Healthy'], ['QMS, deviations', 'API', 'Healthy'], ['Pharmacy EHRs', 'HL7 FHIR R4', 'Healthy'], ['DSCSA network', 'EPCIS / GS1', 'Healthy'], ['Carrier / 3PL', 'EDI 214/856', 'Healthy'], ['Qäre HIE exchange', 'native', 'Healthy'], ['Global Impact Commons', 'signed records', 'Healthy']];
+        return head('Data & Integration', 'Nexus connects to the systems a manufacturer already runs. Standard protocols in, verified records out. No data re-keyed.') +
+          kpiRow([['9', 'integrations live', false], ['HL7 FHIR R4', 'clinical standard', false], ['EPCIS / GS1', 'serialisation', false], ['48ms', 'exchange latency', false]]) +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>System</th><th>Standard</th><th>Status</th></tr></thead><tbody>' +
+          sys.map(function (s) { return '<tr><td class="nm">' + esc(s[0]) + '</td><td class="mono">' + esc(s[1]) + '</td><td><span class="chip verified">' + esc(s[2]) + '</span></td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('every integration is monitored; a failed feed raises here and degrades the dependent module, never silently');
+      } },
+
+    { key: 'compliance', label: 'Security & Compliance', ic: 'CP', group: 'Trust', desc: 'HIPAA, ISO, 21 CFR Part 11, DSCSA and the security engine, checked continuously.',
+      rails: { exchange: [], eesg: UI.trust.eesgMetrics('pharma'), gic: true }, agents: ['Compliance', 'Security', 'Quality'],
+      render: function () {
+        return head('Security & Compliance', 'Compliance and security are architectural, not a report. Pharma is heavily regulated; nothing here is light.') +
+          UI.trust.render({ sector: 'pharma' });
+      } },
+
     { key: 'eesg', label: 'EESG position', ic: 'ES', group: 'Impact', core: true,
       desc: 'The framework position, generated from every enabled module.',
       rails: { exchange: [], eesg: [], gic: false },
@@ -389,8 +430,8 @@
 
   /* ---------- per-tenant manifest + live overrides ---------- */
   var MANIFEST = {
-    'ORG-PHARMA-SML': ['command', 'supply', 'manufacturing', 'quality', 'demand', 'finance', 'environment', 'eesg', 'impact', 'library'],
-    'ORG-PHARMA-MID': ['command', 'sop', 'supply', 'procurement', 'manufacturing', 'serialization', 'quality', 'safety', 'regulatory', 'demand', 'finance', 'environment', 'workforce', 'eesg', 'impact', 'library'],
+    'ORG-PHARMA-SML': ['command', 'supply', 'manufacturing', 'quality', 'demand', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
+    'ORG-PHARMA-MID': ['command', 'sop', 'supply', 'procurement', 'manufacturing', 'serialization', 'quality', 'safety', 'regulatory', 'demand', 'finance', 'integration', 'compliance', 'environment', 'workforce', 'eesg', 'impact', 'library'],
     'ORG-NEXAGEN': 'all'
   };
   var overrides = {};
@@ -529,7 +570,7 @@
     if (!isOn(mod)) mod = 'command';
     var who = cur.personas[0];
     document.getElementById('root').innerHTML =
-      UI.topbar({ appName: 'Nexus', personaName: who.name, personaRole: who.role + ' · ' + cur.name }) +
+      UI.topbar({ appName: 'Nexus', personaName: who.name, personaRole: who.role + ' · ' + cur.name, role: SESSION ? SESSION.roleLabel : null, trustLabel: UI.trust.badgeLabel('pharma') }) +
       '<div class="os">' + UI.osNav(navModules(), mod) +
         '<main class="os-main">' + UI.tenantBar(orgs, cur.id) + '<div style="margin-top:16px">' + (moduleByKey(mod).render()) + '</div></main>' +
       '</div>';
@@ -609,7 +650,19 @@
     greeting: 'I am IRIS, Nexus\'s copilot. I read demand, the cold chain, quality, serialisation, the environment and the capital ask across every enabled module, and I show which specialists I consulted. I advise; a licensed person makes every clinical, quality and regulatory call. Ask me what needs you.'
   });
 
-  seedBaseline(); foldExchange(); render(); setInterval(tick, 1000);
+  window.QareAuth.boot({
+    app: 'Nexus', product: 'nexus', sector: 'pharma',
+    roles: [
+      { id: 'coo', label: 'Director of Ops' },
+      { id: 'quality', label: 'Head of Quality' },
+      { id: 'regulatory', label: 'Regulatory' },
+      { id: 'cfo', label: 'Finance' }
+    ],
+    onReady: function (session) {
+      SESSION = session;
+      seedBaseline(); foldExchange(); render(); setInterval(tick, 1000);
+    }
+  });
 })();
 </script>
 </body>

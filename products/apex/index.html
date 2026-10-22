@@ -15,10 +15,12 @@
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
 <script src="../../assets/app.js"></script>
+<script src="../../assets/auth.js"></script>
 <script>
 (function () {
   var X = window.QareExchange, UI = window.QareUI, esc = UI.esc, money = UI.money;
   UI.init('apex');
+  var SESSION = null;
 
   /* ---------- facility profiles (the tenant lens for a facility OS) ---------- */
   var PROFILES = [
@@ -262,6 +264,24 @@
           prov('environment reads facilities data; medical waste and anaesthetic gases are first-class, not just energy');
       } },
 
+    { key: 'integration', label: 'Data & Integration', ic: 'DI', group: 'Trust', desc: 'EMR/EHR, labs, pharmacy and public-health connections.',
+      rails: { hie: ['LAB_RESULT', 'RX_DISPENSED', 'REFERRAL'], eesg: [{ pillar: 'Governance', front: 'Care quality and safety', measure: 'Integrations healthy', value: '8 of 8', status: 'Verified' }], gic: false }, agents: ['Integration', 'IT'],
+      render: function () {
+        var sys = [['Native EHR (Qäre)', 'FHIR R4', 'Healthy'], ['Connected EMRs', 'HL7 FHIR R4 / v2', 'Healthy'], ['Lab network (Prism)', 'HL7 / LOINC', 'Healthy'], ['Pharmacy (Cura)', 'NCPDP / FHIR', 'Healthy'], ['Health info exchange (TEFCA)', 'Carequality', 'Healthy'], ['Public health reporting', 'de-identified, HL7', 'Healthy'], ['Community clinics', 'FHIR R4', 'Healthy'], ['Global Impact Commons', 'signed records', 'Healthy']];
+        return head('Data & Integration', 'Apex is a native EHR that also connects. It speaks FHIR and HL7 to outside systems, and sends only de-identified data to public-health portals.') +
+          kpiRow([['8', 'integrations live'], ['HL7 FHIR R4', 'clinical standard'], ['TEFCA', 'exchange framework'], ['de-identified', 'to public health']]) +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>System</th><th>Standard</th><th>Status</th></tr></thead><tbody>' +
+          sys.map(function (s) { return '<tr><td class="nm">' + esc(s[0]) + '</td><td class="mono">' + esc(s[1]) + '</td><td><span class="chip verified">' + esc(s[2]) + '</span></td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('native EHR plus connected EMRs over FHIR; only de-identified aggregates leave for public health');
+      } },
+
+    { key: 'compliance', label: 'Security & Compliance', ic: 'CP', group: 'Trust', desc: 'HIPAA, HITECH, ISO, SOC 2 and the security engine, checked continuously.',
+      rails: { hie: [], eesg: UI.trust.eesgMetrics('provider'), gic: true }, agents: ['Compliance', 'Security', 'Privacy'],
+      render: function () {
+        return head('Security & Compliance', 'Patient data is protected by a live security and privacy engine. HIPAA, HITECH and ISO are architectural, not a report.') +
+          UI.trust.render({ sector: 'provider' });
+      } },
+
     { key: 'eesg', label: 'EESG position', ic: 'ES', group: 'Impact', core: true, desc: 'The framework position, generated from every enabled module.',
       rails: { hie: [], eesg: [], gic: false }, agents: ['Sustainability', 'Quality'],
       render: function () {
@@ -298,9 +318,9 @@
 
   /* ---------- per-profile manifest + overrides ---------- */
   var MANIFEST = {
-    'PROF-HOSP': ['command', 'intake', 'flow', 'emergency', 'theatre', 'transitions', 'staffing', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'environment', 'eesg', 'impact', 'library'],
-    'PROF-SNF': ['command', 'intake', 'flow', 'transitions', 'staffing', 'assessments', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'environment', 'eesg', 'impact', 'library'],
-    'PROF-RES': ['command', 'intake', 'flow', 'transitions', 'staffing', 'assessments', 'quality', 'medication', 'billing', 'finance', 'environment', 'eesg', 'impact', 'library']
+    'PROF-HOSP': ['command', 'intake', 'flow', 'emergency', 'theatre', 'transitions', 'staffing', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
+    'PROF-SNF': ['command', 'intake', 'flow', 'transitions', 'staffing', 'assessments', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
+    'PROF-RES': ['command', 'intake', 'flow', 'transitions', 'staffing', 'assessments', 'quality', 'medication', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library']
   };
   var overrides = {};
   function baseEnabled(id) { return (MANIFEST[id] || []).slice(); }
@@ -372,7 +392,7 @@
   function render() {
     if (!isOn(mod)) mod = 'command';
     document.getElementById('root').innerHTML =
-      UI.topbar({ appName: 'Apex', personaName: cur.persona.name, personaRole: cur.persona.role + ' · ' + cur.name }) +
+      UI.topbar({ appName: 'Apex', personaName: cur.persona.name, personaRole: cur.persona.role + ' · ' + cur.name, role: SESSION ? SESSION.roleLabel : null, trustLabel: UI.trust.badgeLabel('provider') }) +
       '<div class="os">' + UI.osNav(navModules(), mod) +
         '<main class="os-main">' + UI.tenantBar(profileTabs(), cur.id) + '<div style="margin-top:16px">' + moduleByKey(mod).render() + '</div></main>' +
       '</div>';
@@ -430,7 +450,19 @@
   UI.iris.mount({ getContext: irisContext, answer: irisAnswer,
     greeting: 'I am IRIS, Apex\'s copilot. I watch the floor, the referral queue, the 30-day discharge window and the capital ask, across whichever profile this facility runs. I advise; a licensed clinician makes every clinical call. Ask me who is at readmission risk.' });
 
-  seedState(); render(); setInterval(tick, 1000);
+  window.QareAuth.boot({
+    app: 'Apex', product: 'apex', sector: 'provider',
+    roles: [
+      { id: 'admin', label: 'Administrator' },
+      { id: 'doctor', label: 'Physician' },
+      { id: 'nurse', label: 'Nurse' },
+      { id: 'quality', label: 'Quality & Safety' }
+    ],
+    onReady: function (session) {
+      SESSION = session;
+      seedState(); render(); setInterval(tick, 1000);
+    }
+  });
 })();
 </script>
 </body>

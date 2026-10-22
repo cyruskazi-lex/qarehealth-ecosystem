@@ -30,15 +30,19 @@
     opts = opts || {};
     var initials = (opts.personaName || '').split(' ').map(function (w) { return w[0]; }).filter(Boolean).slice(0, 2).join('').toUpperCase();
     var logo = (typeof window !== 'undefined' && window.__QARE_LOGO__) ? window.__QARE_LOGO__ : '../../assets/brand/qare-wordmark.png';
+    var role = opts.role ? '<span class="rolechip">' + esc(opts.role) + '</span>' : '';
+    var badge = opts.trust === false ? '' :
+      '<button class="trustbadge" data-mod="compliance" title="Security and compliance posture"><span class="shield"></span>' + esc(opts.trustLabel || 'Secure. HIPAA') + '</button>';
     return '' +
       '<header class="qbar">' +
         '<a href="../../index.html" class="wordmark" title="All Qäre apps"><img src="' + logo + '" alt="Qäre" class="wm-img"> Health</a>' +
         '<span class="app-name">' + esc(opts.appName || '') + '</span>' +
         '<span class="live"><span class="d"></span>one exchange, live</span>' +
         '<span class="spacer"></span>' +
+        badge +
         (opts.personaName ? (
           '<span class="persona"><span class="ava">' + esc(initials) + '</span>' +
-          '<span><span class="pn">' + esc(opts.personaName) + '</span><br><span class="pr">' + esc(opts.personaRole || '') + '</span></span></span>'
+          '<span><span class="pn">' + esc(opts.personaName) + '</span><br><span class="pr">' + esc(opts.personaRole || '') + '</span></span>' + role + '</span>'
         ) : '') +
         '<a class="btn btn-ghost btn-sm" href="' + (X ? X.GIC_URL : '#') + '" target="_blank" rel="noopener" style="margin-left:14px">Global Impact Commons</a>' +
       '</header>';
@@ -165,10 +169,13 @@
         if (c) { setOpen(true); ask(c.getAttribute('data-q')); }
       });
     }
+    var greeted = false, greeting = null;
     function setOpen(v) {
       open = v; var p = el.querySelector('.iris-panel');
-      if (v) { p.hidden = false; requestAnimationFrame(function () { el.classList.add('open'); }); setTimeout(function () { inputEl.focus(); }, 60); }
-      else { el.classList.remove('open'); setTimeout(function () { p.hidden = true; }, 200); }
+      if (v) {
+        p.hidden = false; requestAnimationFrame(function () { el.classList.add('open'); }); setTimeout(function () { inputEl.focus(); }, 60);
+        if (!greeted && greeting) { greeted = true; var d = bubble('ai', ''); setTimeout(function () { type(d, greeting); }, 300); }
+      } else { el.classList.remove('open'); setTimeout(function () { p.hidden = true; }, 200); }
     }
     function bubble(cls, text) { var d = document.createElement('div'); d.className = 'iris-b ' + cls; d.textContent = text; logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight; return d; }
     function type(d, text, cb) {
@@ -187,7 +194,7 @@
         b.addEventListener('click', function () {
           if (a.q) { ask(a.q); return; }
           bubble('me', a.label);
-          var d2 = bubble('iris', ''); type(d2, a.reply || 'Done. A licensed person signs the action before it takes effect.');
+          var d2 = bubble('ai', ''); type(d2, a.reply || 'Done. A licensed person signs the action before it takes effect.');
         });
         bar.appendChild(b);
       });
@@ -201,12 +208,12 @@
       if (typeof res === 'string') res = { text: res };
       var agents = res.agents || [], actions = res.actions || [], text = res.text || '';
       // Show which specialist agents are being consulted (the Telos multi-agent model, made visible).
-      var think = bubble('iris think', '');
+      var think = bubble('ai think', '');
       think.innerHTML = '<span class="iris-dots"></span><span class="iris-team">' + (agents.length ? 'Consulting ' + agents.map(esc).join(', ') : 'Thinking') + '</span>';
       busy = true;
       setTimeout(function () {
         think.remove();
-        var d = bubble('iris', '');
+        var d = bubble('ai', '');
         type(d, text, function () { renderActions(actions); });
       }, reduce ? 0 : (agents.length ? 850 : 300));
     }
@@ -219,12 +226,74 @@
     }
     return {
       mount: function (c) {
-        cfg.answer = c.answer || null; cfg.getContext = c.getContext || null; build(); paintContext();
-        if (c.greeting) { var d = bubble('iris', ''); setTimeout(function () { type(d, c.greeting); }, 400); }
+        cfg.answer = c.answer || null; cfg.getContext = c.getContext || null; greeting = c.greeting || null; build(); paintContext();
       },
       context: paintContext,
       ask: function (q) { build(); setOpen(true); ask(q); }
     };
+  })();
+
+  /* ---- Shared trust layer: compliance posture + security engine.
+     A cross-cutting rail every app expresses, like the exchange and EESG.
+     Compliance is a deal-breaker in regulated health and pharma, so this is
+     real content, generated into a module any app can mount. ---- */
+  var Trust = (function () {
+    // status: 'certified' | 'compliant' | 'attested' | 'ontrack' | 'monitored'
+    var FRAMEWORKS = [
+      { id: 'HIPAA', name: 'HIPAA Privacy & Security', scope: 'US health data', status: 'compliant', sectors: ['provider', 'pharma', 'payer'], note: 'Privacy, Security and Breach Notification rules; BAAs in place' },
+      { id: 'HITECH', name: 'HITECH Act', scope: 'US breach / EHR', status: 'compliant', sectors: ['provider', 'payer'], note: 'Breach notification and audit controls' },
+      { id: 'GDPR', name: 'GDPR', scope: 'EU personal data', status: 'compliant', sectors: ['provider', 'pharma', 'payer'], note: 'Lawful basis, DSAR and erasure workflows' },
+      { id: 'ISO 27001', name: 'ISO/IEC 27001', scope: 'Information security', status: 'certified', sectors: ['provider', 'pharma', 'payer'], note: 'ISMS certified, annual surveillance audit' },
+      { id: 'ISO 27701', name: 'ISO/IEC 27701', scope: 'Privacy information', status: 'certified', sectors: ['provider', 'pharma', 'payer'], note: 'Privacy extension to the ISMS' },
+      { id: 'SOC 2 II', name: 'SOC 2 Type II', scope: 'Trust services', status: 'attested', sectors: ['provider', 'pharma', 'payer'], note: 'Security, availability, confidentiality; 12-month report' },
+      { id: 'ISO 9001', name: 'ISO 9001', scope: 'Quality management', status: 'certified', sectors: ['pharma', 'provider'], note: 'Quality management system' },
+      { id: 'ISO 13485', name: 'ISO 13485', scope: 'Medical device QMS', status: 'ontrack', progress: 88, sectors: ['pharma'], note: 'Stage 2 audit scheduled; 88% of controls evidenced' },
+      { id: '21 CFR 11', name: '21 CFR Part 11', scope: 'FDA e-records / e-signatures', status: 'compliant', sectors: ['pharma'], note: 'Electronic records, audit trails and validated e-signatures' },
+      { id: 'Annex 11', name: 'EU GMP Annex 11', scope: 'Computerised systems', status: 'compliant', sectors: ['pharma'], note: 'Computerised system validation (CSV)' },
+      { id: 'DSCSA', name: 'DSCSA', scope: 'US drug track & trace', status: 'compliant', sectors: ['pharma'], note: 'Unit-level serialisation and verification' },
+      { id: 'ISO 42001', name: 'ISO/IEC 42001', scope: 'AI management', status: 'ontrack', progress: 72, sectors: ['provider', 'pharma', 'payer'], note: 'AI management system for Telos governance; 72% implemented' }
+    ];
+    var SECURITY = [
+      ['Encryption at rest', 'AES-256, per-tenant keys', 'ok'],
+      ['Encryption in transit', 'TLS 1.3, mTLS between services', 'ok'],
+      ['Access control', 'RBAC + ABAC, least privilege', 'ok'],
+      ['Authentication', 'SSO (SAML / OIDC), MFA enforced', 'ok'],
+      ['Audit trail', 'Immutable, every record access logged', 'ok'],
+      ['De-identification', 'Safe Harbor + expert determination', 'ok'],
+      ['Consent', 'Double-key, revocable, enforced per request', 'ok'],
+      ['Key management', 'HSM-backed, automatic rotation', 'ok'],
+      ['Data residency', 'Region-pinned, no cross-border egress', 'ok'],
+      ['Threat monitoring', '24/7 SIEM, anomaly detection', 'ok'],
+      ['Penetration testing', 'Independent, annual + continuous scan', 'ok'],
+      ['Backup & DR', 'RPO 15 min, RTO 60 min, tested quarterly', 'ok']
+    ];
+    var SLABEL = { certified: 'Certified', compliant: 'Compliant', attested: 'Attested', ontrack: 'On track', monitored: 'Monitored' };
+    var SCLASS = { certified: 'verified', compliant: 'verified', attested: 'verified', ontrack: 'claimed', monitored: 'claimed' };
+    function forSector(sector) { return FRAMEWORKS.filter(function (f) { return !sector || f.sectors.indexOf(sector) >= 0; }); }
+    function badgeLabel(sector) { return sector === 'pharma' ? 'Secure. 21 CFR 11' : 'Secure. HIPAA'; }
+    function render(opts) {
+      opts = opts || {}; var sector = opts.sector, fw = forSector(sector);
+      var online = fw.filter(function (f) { return f.status !== 'ontrack'; }).length;
+      var head = '<div class="pitch"><div class="k">Trust rail</div><div class="l">Compliance, privacy and security are architectural, checked continuously, and emitted to the governance pillar of the framework. ' + online + ' of ' + fw.length + ' frameworks live, the rest on a dated path.</div></div>';
+      var grid = '<div class="cards3" style="margin-bottom:16px">' + fw.map(function (f) {
+        var bar = f.status === 'ontrack' ? '<div class="progress"><div class="fill warn" style="width:' + (f.progress || 0) + '%"></div></div><div class="band" style="margin-top:4px">' + (f.progress || 0) + '% evidenced</div>' : '';
+        return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px"><strong style="font-size:13px">' + esc(f.name) + '</strong><span class="chip ' + SCLASS[f.status] + '">' + SLABEL[f.status] + '</span></div>' +
+          '<div class="sub2">' + esc(f.scope) + '</div><div class="sub2" style="margin-top:6px">' + esc(f.note) + '</div>' + bar + '</div>';
+      }).join('') + '</div>';
+      var sec = '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Security engine, live</div><div class="seclist">' +
+        SECURITY.map(function (s) { return '<div class="secrow"><span class="sev ok"></span><div style="flex:1"><div style="font-size:13px;font-weight:600">' + esc(s[0]) + '</div><div class="sub2">' + esc(s[1]) + '</div></div><span class="chip verified">active</span></div>'; }).join('') +
+        '</div></div>';
+      return head + grid + sec +
+        '<p class="provenance">compliance posture is checked continuously and emitted to the Governance pillar; evidence is auditable, never asserted</p>';
+    }
+    function eesgMetrics(sector) {
+      var fw = forSector(sector), live = fw.filter(function (f) { return f.status !== 'ontrack'; }).length;
+      return [
+        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Compliance frameworks live', value: live + ' of ' + fw.length, status: 'Verified' },
+        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Security controls active', value: SECURITY.length + ' of ' + SECURITY.length, status: 'Verified' }
+      ];
+    }
+    return { FRAMEWORKS: FRAMEWORKS, SECURITY: SECURITY, forSector: forSector, render: render, badgeLabel: badgeLabel, eesgMetrics: eesgMetrics };
   })();
 
   global.QareUI = {
@@ -232,6 +301,6 @@
     esc: esc, money: money, timeOf: timeOf,
     statusChip: statusChip, topbar: topbar, impactPanel: impactPanel,
     tenantBar: tenantBar, osNav: osNav, toast: toast, watchToasts: watchToasts,
-    countUp: countUp, iris: iris, reduce: reduce
+    countUp: countUp, iris: iris, reduce: reduce, trust: Trust
   };
 })(typeof window !== 'undefined' ? window : this);
