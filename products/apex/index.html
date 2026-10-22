@@ -45,7 +45,7 @@
   /* ---------- live state ---------- */
   var discharges = [], incidents = [], staffRoster = [], patients = [], notes = [], doctors = [], nurses = [], tickN = 0, acc = 0;
   var curPatientId = null, noteDraft = null, piiBlur = false, chartDomain = 'whole', glass = {};
-  var inventory = [], orders = [], census = [], admDis = [], readmitHist = [], flowUnit = 'all', curItem = null;
+  var inventory = [], orders = [], census = [], admDis = [], readmitHist = [], flowUnit = 'all', curItem = null, curStaff = null;
   function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
 
   function seedState() {
@@ -88,14 +88,15 @@
     var referrers = ['Union Health Outreach', 'Sylhet CHW Program', 'National CHW Corps', 'Bhorosha Primary Care', 'Shetu Medical Centre'];
     var riskCycle = ['low', 'low', 'rising', 'low', 'high', 'low', 'rising', 'low', 'low', 'high'];
     for (var i = 0; i < 47; i++) {
-      var male = i % 2 === 0;
-      var nm = (male ? pmF[i % pmF.length] : pfF[i % pfF.length]) + ' ' + pLast[(i * 7) % pLast.length];
-      var p1 = probPool[i % probPool.length], p2 = probPool[(i * 3 + 5) % probPool.length];
+      var male = (i + Math.floor(i / 3)) % 2 === 0;
+      var fi = (i * 3 + Math.floor(i / 4)) % 20, li = (i * 7 + Math.floor(i / 3)) % pLast.length;
+      var nm = (male ? pmF[fi % pmF.length] : pfF[fi % pfF.length]) + ' ' + pLast[li];
+      var p1 = probPool[(i * 3 + Math.floor(i / 2)) % probPool.length], p2 = probPool[(i * 5 + 5) % probPool.length];
       var doc = doctors[i % doctors.length], nur = nurses[(i * 3) % nurses.length];
       patients.push({
-        id: 'PT-' + (1000 + i), name: nm, age: 28 + (i * 5) % 58, sex: male ? 'M' : 'F',
+        id: 'PT-' + (1000 + i), name: nm, age: 24 + (i * 7 + Math.floor(i / 2)) % 62, sex: male ? 'M' : 'F',
         mrn: 'QH-PT-' + (101000 + i * 7), loc: ['Dhaka', 'Gazipur', 'Sylhet', 'Chattogram', 'Narsingdi'][i % 5], lang: 'Bangla',
-        code: i % 9 === 0 ? 'DNR' : 'Full code', risk: riskCycle[i % riskCycle.length],
+        code: i % 9 === 0 ? 'DNR' : 'Full code', risk: riskCycle[(i + Math.floor(i / 3)) % riskCycle.length],
         allergies: [allergyPool[i % allergyPool.length]], problems: p1 === p2 ? [p1] : [p1, p2],
         meds: [medPool[i % medPool.length], medPool[(i * 2 + 1) % medPool.length]],
         care: i % 3 === 0 ? 'Home health visit; 30-day window open' : i % 3 === 1 ? 'Outpatient review, fortnightly' : 'Inpatient, under ' + doc.role.toLowerCase(),
@@ -108,7 +109,7 @@
     patients.forEach(function (p, idx) {
       var u = cur.units[idx % cur.units.length];
       p.unit = u.name; p.bed = u.name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() + '-' + (10 + idx % Math.max(1, u.total));
-      p.los = 1 + idx % 12; p.status = p.risk === 'high' && idx % 5 !== 4 ? 'Observation' : statuses[idx % statuses.length];
+      p.los = 1 + (idx * 3 + Math.floor(idx / 2)) % 14; p.status = p.risk === 'high' ? 'Observation' : statuses[(idx * 7 + Math.floor(idx / 3)) % statuses.length];
       p.dx = p.problems[0];
     });
 
@@ -141,7 +142,7 @@
     census = [138, 141, 139, 144, 146, 142, 148, 145, 150, 147, 149, 146, 151, beds().occ];
     admDis = [{ label: 'Mon', a: 22, b: 18 }, { label: 'Tue', a: 19, b: 21 }, { label: 'Wed', a: 24, b: 17 }, { label: 'Thu', a: 20, b: 23 }, { label: 'Fri', a: 26, b: 19 }, { label: 'Sat', a: 15, b: 20 }, { label: 'Sun', a: 12, b: 16 }];
     readmitHist = [7.8, 7.2, 6.9, 6.4, 6.1, 5.8];
-    flowUnit = 'all'; curItem = null;
+    flowUnit = 'all'; curItem = null; curStaff = null;
 
     curPatientId = null; noteDraft = null;
     notes = [
@@ -408,11 +409,23 @@
             return '<tr class="click" data-patient="' + esc(p.id) + '"><td class="nm">' + esc(p.name) + '</td><td class="mono">' + esc(p.bed) + '</td><td class="sub2">' + esc(p.unit) + '</td><td class="sub2">' + esc(p.dx) + '</td><td class="num">' + p.los + 'd</td><td class="sub2">' + esc(p.attending || 'Dr. Naima Islam') + '</td><td><span class="chip ' + statusChipCls(p.status) + '">' + esc(p.status) + '</span></td></tr>';
           }).join('') + '</tbody></table></div>';
         var ready = patients.filter(function (p) { return p.status === 'Stable' || p.status === 'Improving'; }).slice(0, 4);
+        var wardDetail = '';
+        if (flowUnit !== 'all') {
+          var u = units.filter(function (x) { return x.name === flowUnit; })[0];
+          if (u) {
+            var inUnit = patients.filter(function (p) { return p.unit === flowUnit; });
+            var avgLos = inUnit.length ? Math.round(inUnit.reduce(function (a, p) { return a + p.los; }, 0) / inUnit.length) : 0;
+            var crit = inUnit.filter(function (p) { return p.status === 'Critical'; }).length;
+            var cn = nurses.filter(function (n) { return n.role.indexOf(flowUnit) === 0; })[0];
+            wardDetail = '<div class="card shadow" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><div style="font-family:var(--font-brand);font-weight:700">' + esc(u.name) + ' ward detail</div><button class="btn btn-ghost btn-sm" data-flowunit="all">All units</button></div>' +
+              '<div class="figs">' + [[u.occ + '/' + u.total, 'occupied'], [Math.round(u.occ / u.total * 100) + '%', 'occupancy'], [u.total - u.occ, 'free'], [avgLos + 'd', 'mean LOS'], [crit, 'critical'], [cn ? cn.name.split(' ')[0] : 'unassigned', 'charge nurse']].map(function (a) { return '<div class="fig"><div class="fv">' + esc(a[0]) + '</div><div class="fk">' + esc(a[1]) + '</div></div>'; }).join('') + '</div></div>';
+          }
+        }
         return head('Patient flow', 'Who is where, under whom, how long, and what blocks discharge. Click a unit to filter, a patient to open the chart.') +
           kpiRow([[b.occ + '/' + b.total, 'beds occupied', 'k-beds'], [Math.round(b.occ / b.total * 100) + '%', 'occupancy'], [b.total - b.occ, 'free'], [inWindow().length, 'in discharge window']]) +
           '<div class="split"><div class="card shadow"><div class="chead" style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div style="font-family:var(--font-brand);font-weight:700">Census, 14 days</div><div class="band mono">' + b.occ + ' now</div></div>' + UI.lineChart(census, { h: 150 }) + '</div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Admissions vs discharges</div>' + UI.barsChart(admDis, { h: 150 }) + '<div class="legendrow"><span><i class="a"></i>Admissions</span><span><i class="b"></i>Discharges</span></div></div></div>' +
-          '<div style="margin-top:16px">' + chips +
+          '<div style="margin-top:16px">' + chips + wardDetail +
           '<div class="split"><div>' + table + '</div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Ready for discharge</div>' +
           ready.map(function (p) { return row('<span class="sev ok"></span>' + esc(p.name), esc(p.unit) + ' &middot; LOS ' + p.los + 'd', '<button class="btn btn-primary btn-sm" data-discharge="' + esc(p.name) + '">Discharge</button>'); }).join('') + '</div></div></div>' +
@@ -424,9 +437,12 @@
       render: function () {
         var T = [['Unknown male, ~40', 'Red', 'Chest pain, diaphoretic', '0 min'], ['F. Akter, 28', 'Yellow', 'High fever, 3 days', '18 min'], ['Child, 6', 'Yellow', 'Dehydration', '22 min'], ['M. Islam, 54', 'Green', 'Laceration, stable', '40 min']];
         var cat = { Red: 'inconsistent', Yellow: 'claimed', Green: 'verified' };
+        var waitHist = ['08', '10', '12', '14', '16', '18', '20'].map(function (h, i) { return { label: h, a: [11, 14, 22, 18, 13, 16, 9][i] }; });
         return head('Emergency', 'Triage board, most acute first. Red is seen immediately.') +
           kpiRow([['1', 'red'], ['2', 'yellow'], ['1', 'green'], ['14 min', 'median wait']]) +
-          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>Category</th><th>Complaint</th><th>Waiting</th></tr></thead><tbody>' +
+          '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Median wait, by hour (min)</div>' + UI.barsChart(waitHist, { h: 140 }) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Arrivals, 14 days</div>' + UI.lineChart([48, 52, 46, 61, 58, 55, 63, 59, 67, 62, 64, 57, 66, 54], { h: 140 }) + '</div></div>' +
+          '<div class="qt-wrap" style="margin-top:16px"><table class="qt"><thead><tr><th>Patient</th><th>Category</th><th>Complaint</th><th>Waiting</th></tr></thead><tbody>' +
           T.map(function (t) { return '<tr><td class="nm">' + esc(t[0]) + '</td><td><span class="chip ' + cat[t[1]] + '">' + esc(t[1]) + '</span></td><td>' + esc(t[2]) + '</td><td class="mono">' + esc(t[3]) + '</td></tr>'; }).join('') +
           '</tbody></table></div>' + prov('triage category drives the queue order, not arrival time');
       } },
@@ -455,15 +471,30 @@
     { key: 'staffing', label: 'Staffing & roster', ic: 'SF', group: 'Operations', desc: 'Nurse-to-patient ratios, the Five-Star measure.',
       rails: { hie: [], eesg: [{ pillar: 'Social', front: 'Care quality and safety', measure: 'Nurse-to-patient ratio, peak', value: '1:6.8', status: 'Inconsistent' }], gic: false }, agents: ['Staffing', 'Quality'],
       render: function () {
-        return head('Staffing & roster', 'The clinical workforce: physicians on service, nurses rostered, and the ratios that drive the Five-Star measure.') +
+        if (curStaff) {
+          var isDoc = curStaff.indexOf('DR-') === 0;
+          var person = (isDoc ? doctors : nurses).filter(function (x) { return x.id === curStaff; })[0];
+          if (person) {
+            var panel = isDoc ? patients.filter(function (p) { return p.attending === person.name; }) : patients.filter(function (p) { return p.nurse === person.name; });
+            var hi = panel.filter(function (p) { return p.risk === 'high'; }).length, crit = panel.filter(function (p) { return p.status === 'Critical'; }).length;
+            return '<div class="sec-head"><div><div class="t">' + esc(person.name) + '</div><div class="d">' + esc(person.role) + ' · ' + esc(person.status) + '</div></div><div class="actions"><button class="btn btn-ghost btn-sm" data-staff-back="1">Back to staffing</button></div></div>' +
+              kpiRow([[panel.length, isDoc ? 'patients on panel' : 'patients assigned'], [hi, 'high readmission risk'], [crit, 'critical'], [isDoc ? 'attending' : 'primary nurse', 'role']]) +
+              '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">' + (isDoc ? 'Patient panel' : 'Assigned patients') + '</div>' +
+              (panel.length ? '<div class="qt-wrap" style="border:0;max-height:420px;overflow:auto"><table class="qt"><thead><tr><th>Patient</th><th>Bed</th><th>Unit</th><th>Diagnosis</th><th class="num">LOS</th><th>Status</th></tr></thead><tbody>' +
+                panel.map(function (p) { return '<tr class="click" data-patient="' + esc(p.id) + '"><td class="nm">' + esc(p.name) + '</td><td class="mono">' + esc(p.bed) + '</td><td class="sub2">' + esc(p.unit) + '</td><td class="sub2">' + esc(p.dx) + '</td><td class="num">' + p.los + 'd</td><td><span class="chip ' + statusChipCls(p.status) + '">' + esc(p.status) + '</span></td></tr>'; }).join('') + '</tbody></table></div>'
+                : '<div class="sub">No patients on this panel currently.</div>') + '</div>' +
+              prov('a panel is the set of patients under this clinician, read from the inpatient roster');
+          }
+        }
+        return head('Staffing & roster', 'The clinical workforce: physicians on service, nurses rostered, and the ratios that drive the Five-Star measure. Click anyone to see their panel.') +
           kpiRow([[doctors.length, 'physicians on service'], [nurses.length, 'nurses rostered'], ['1:4.8', 'mean ratio'], ['1:6.8', 'night ratio']]) +
           '<div class="qt-wrap"><table class="qt"><thead><tr><th>Shift</th><th class="num">Nurses</th><th class="num">Patients</th><th>Ratio</th><th>Status</th></tr></thead><tbody>' +
           staffRoster.map(function (s) { return '<tr><td class="nm">' + esc(s.shift) + '</td><td class="num">' + s.nurses + '</td><td class="num">' + s.patients + '</td><td class="mono">' + esc(s.ratio) + '</td><td>' + (s.status === 'warn' ? '<span class="chip claimed">below target</span>' : '<span class="chip verified">ok</span>') + '</td></tr>'; }).join('') +
           '</tbody></table></div>' +
           '<div class="split" style="margin-top:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Physicians on service</div>' +
-          '<div class="qt-wrap" style="border:0;max-height:320px;overflow:auto"><table class="qt"><tbody>' + doctors.map(function (d) { return '<tr><td class="nm">' + esc(d.name) + '</td><td class="sub2">' + esc(d.role) + '</td><td style="text-align:right"><span class="chip ' + (d.status === 'On call' ? 'claimed' : 'verified') + '">' + esc(d.status) + '</span></td></tr>'; }).join('') + '</tbody></table></div></div>' +
+          '<div class="qt-wrap" style="border:0;max-height:320px;overflow:auto"><table class="qt"><tbody>' + doctors.map(function (d) { var panel = patients.filter(function (p) { return p.attending === d.name; }).length; return '<tr class="click" data-staff="' + esc(d.id) + '"><td class="nm">' + esc(d.name) + '</td><td class="sub2">' + esc(d.role) + '</td><td class="num sub2">' + panel + ' pts</td><td style="text-align:right"><span class="chip ' + (d.status === 'On call' ? 'claimed' : 'verified') + '">' + esc(d.status) + '</span></td></tr>'; }).join('') + '</tbody></table></div></div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Nurses rostered</div>' +
-          '<div class="qt-wrap" style="border:0;max-height:320px;overflow:auto"><table class="qt"><tbody>' + nurses.map(function (n) { return '<tr><td class="nm">' + esc(n.name) + '</td><td class="sub2">' + esc(n.role) + '</td><td style="text-align:right"><span class="chip ' + (n.status === 'Night' ? 'claimed' : 'verified') + '">' + esc(n.status) + '</span></td></tr>'; }).join('') + '</tbody></table></div></div></div>' +
+          '<div class="qt-wrap" style="border:0;max-height:320px;overflow:auto"><table class="qt"><tbody>' + nurses.map(function (n) { return '<tr class="click" data-staff="' + esc(n.id) + '"><td class="nm">' + esc(n.name) + '</td><td class="sub2">' + esc(n.role) + '</td><td style="text-align:right"><span class="chip ' + (n.status === 'Night' ? 'claimed' : 'verified') + '">' + esc(n.status) + '</span></td></tr>'; }).join('') + '</tbody></table></div></div></div>' +
           prov('the staffing ratio is an EESG care-quality measure, and for a SNF it drives the Five-Star rating');
       } },
 
@@ -497,11 +528,15 @@
     { key: 'quality', label: 'Clinical quality & safety', ic: 'QS', group: 'Assure', desc: 'Readmissions, HAIs, falls, pressure injuries, incidents.',
       rails: { hie: ['READMIT'], eesg: [ { pillar: 'Social', front: 'Care quality and safety', measure: 'Healthcare-associated infection rate', value: '1.9%', status: 'Verified' }, { pillar: 'Social', front: 'Care quality and safety', measure: 'Falls per 1k bed-days', value: '2.4', status: 'Claimed' } ], gic: true }, agents: ['Quality', 'Infection control', 'Clinical'],
       render: function () {
+        var haiHist = [2.6, 2.4, 2.3, 2.1, 2.0, 1.9], fallsHist = [3.1, 2.9, 2.8, 2.6, 2.5, 2.4];
         return head('Clinical quality & safety', 'The safety measures that gate care quality and feed the framework.') +
-          kpiRow([[readmitRate().toFixed(1) + '%', '30-day readmission', 'k-rr'], ['1.9%', 'HAI rate'], ['2.4', 'falls / 1k bed-days'], [incidents.filter(function (i) { return i.status !== 'Closed'; }).length, 'open incidents']]) +
-          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Incident</th><th>Type</th><th>Unit</th><th>Severity</th><th>Status</th></tr></thead><tbody>' +
+          kpiRow([[facilityReadmit().toFixed(1) + '%', '30-day readmission'], ['1.9%', 'HAI rate'], ['2.4', 'falls / 1k bed-days'], [incidents.filter(function (i) { return i.status !== 'Closed'; }).length, 'open incidents']]) +
+          '<div class="cards3"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px;font-size:13px">30-day readmission</div>' + UI.lineChart(readmitHist, { h: 110, color: 'var(--verified)' }) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px;font-size:13px">HAI rate</div>' + UI.lineChart(haiHist, { h: 110, color: 'var(--verified)' }) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px;font-size:13px">Falls / 1k bed-days</div>' + UI.lineChart(fallsHist, { h: 110, color: 'var(--verified)' }) + '</div></div>' +
+          '<div class="qt-wrap" style="margin-top:16px"><table class="qt"><thead><tr><th>Incident</th><th>Type</th><th>Unit</th><th>Severity</th><th>Status</th></tr></thead><tbody>' +
           incidents.map(function (i) { return '<tr><td class="mono">' + esc(i.id) + '</td><td class="nm">' + esc(i.type) + '</td><td>' + esc(i.unit) + '</td><td>' + (i.sev === 'Moderate' ? '<span class="chip claimed">Moderate</span>' : '<span class="chip">Minor</span>') + '</td><td>' + (i.status === 'Closed' ? '<span class="chip verified">Closed</span>' : '<span class="chip claimed">' + esc(i.status) + '</span>') + '</td></tr>'; }).join('') +
-          '</tbody></table></div>' + prov('readmissions, HAIs and falls are the care-quality front of the EESG framework');
+          '</tbody></table></div>' + prov('readmissions, HAIs and falls are the care-quality front of the EESG framework; all three trending down');
       } },
 
     { key: 'medication', label: 'Medication safety', ic: 'MS', group: 'Assure', desc: 'Medication administration and adverse drug events.',
@@ -589,9 +624,12 @@
     { key: 'finance', label: 'Finance', ic: 'FN', group: 'Money', desc: 'Cost per bed-day and operating margin.',
       rails: { hie: [], eesg: [{ pillar: 'Economic', front: 'Affordability and financial protection', measure: 'Cost per bed-day', value: '$214', status: 'Verified' }], gic: false }, agents: ['Finance'],
       render: function () {
+        var rev = ['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'].map(function (m, i) { return { label: m, a: [38, 41, 39, 44, 46, 48][i], b: [34, 36, 35, 38, 40, 41][i] }; });
         return head('Finance', 'Cost per bed-day, margin and the working capital behind operations.') +
           kpiRow([[money(214, '$'), 'cost per bed-day'], ['12%', 'operating margin'], [money(2400000, '$'), 'receivables'], ['41d', 'days in AR']]) +
-          '<div class="card shadow"><div class="sub" style="font-size:13px">Finance reads the same admission, discharge and claim events as operations, so cost per bed-day is computed from the real census, not an allocation. One ledger of reality.</div></div>' +
+          '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Revenue vs cost ($100k)</div>' + UI.barsChart(rev, { h: 150 }) + '<div class="legendrow"><span><i class="a"></i>Revenue</span><span><i class="b"></i>Cost</span></div></div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Cost per bed-day, 6 months ($)</div>' + UI.lineChart([228, 224, 221, 219, 216, 214], { h: 150, color: 'var(--verified)' }) + '<div class="band" style="margin-top:4px">down 6% on throughput gains</div></div></div>' +
+          '<div class="card shadow" style="margin-top:16px"><div class="sub" style="font-size:13px">Finance reads the same admission, discharge and claim events as operations, so cost per bed-day is computed from the real census, not an allocation. One ledger of reality.</div></div>' +
           prov('finance reads the same HIE events as operations');
       } },
 
@@ -600,7 +638,10 @@
       render: function () {
         return head('Environment', 'The facility environmental position: energy, water, medical waste and anaesthetic gases, per bed-day.') +
           kpiRow([['58 kWh', 'energy / bed-day'], ['410 L', 'water / bed-day'], ['64%', 'waste recycled'], ['+8%', 'carbon vs target']]) +
-          '<div class="card shadow"><div class="sub" style="font-size:13px">Hospitals and nursing homes are energy, water and waste intensive, and anaesthetic gases and single-use plastics are the overlooked lines. Each is an EESG emitter read from facilities data, and a candidate for the carbon-credit line on the Commons.</div></div>' +
+          '<div class="cards3"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px;font-size:13px">Energy / bed-day (kWh)</div>' + UI.lineChart([64, 63, 61, 60, 59, 58], { h: 110, color: 'var(--verified)' }) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px;font-size:13px">Water / bed-day (L)</div>' + UI.lineChart([460, 448, 436, 425, 418, 410], { h: 110, color: 'var(--verified)' }) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px;font-size:13px">Waste recycled (%)</div>' + UI.lineChart([52, 55, 58, 60, 62, 64], { h: 110 }) + '</div></div>' +
+          '<div class="card shadow" style="margin-top:16px"><div class="sub" style="font-size:13px">Hospitals and nursing homes are energy, water and waste intensive, and anaesthetic gases and single-use plastics are the overlooked lines. Each is an EESG emitter read from facilities data, and a candidate for the carbon-credit line on the Commons.</div></div>' +
           prov('environment reads facilities data; medical waste and anaesthetic gases are first-class, not just energy');
       } },
 
@@ -799,6 +840,8 @@
     var itRow = e.target.closest('[data-item]'); if (itRow) { curItem = itRow.getAttribute('data-item'); render(); return; }
     if (e.target.closest('[data-item-back]')) { curItem = null; render(); return; }
     var ro = e.target.getAttribute('data-reorder'); if (ro) { UI.toast('Reorder sent', ro + ' reorder routed to Relay for serialised, cold-chain delivery.'); return; }
+    var stEl = e.target.closest('[data-staff]'); if (stEl) { curStaff = stEl.getAttribute('data-staff'); render(); return; }
+    if (e.target.closest('[data-staff-back]')) { curStaff = null; render(); return; }
     var nn = e.target.getAttribute('data-newnote'); if (nn) { mod = 'documentation'; noteDraft = { pt: nn, mode: 'translate', stage: 'start' }; render(); return; }
     var sn = e.target.getAttribute('data-startnote'); if (sn) {
       noteDraft = { pt: curPatientId || 'PT-AMARA', mode: sn, stage: 'capturing' };
