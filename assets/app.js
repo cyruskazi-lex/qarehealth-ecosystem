@@ -110,10 +110,105 @@
     });
   }
 
+  var reduce = false;
+  try { reduce = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+
+  // Count a number up to its target. Starts from whatever is shown, so a live
+  // value that nudges ticks smoothly rather than restarting from zero.
+  function countUp(el, to, opts) {
+    if (!el) return;
+    opts = opts || {};
+    var fmt = opts.fmt || function (v) { return Math.round(v).toLocaleString('en-US'); };
+    var pre = opts.pre || '', suf = opts.suf || '';
+    var from = parseFloat(String(el.textContent).replace(/[^0-9.\-]/g, ''));
+    if (isNaN(from)) from = 0;
+    if (reduce || from === to) { el.textContent = pre + fmt(to) + suf; return; }
+    var dur = opts.dur || 650, t0 = null;
+    requestAnimationFrame(function step(ts) {
+      if (!t0) t0 = ts;
+      var k = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = pre + fmt(from + (to - from) * e) + suf;
+      if (k < 1) requestAnimationFrame(step);
+    });
+  }
+
+  /* IRIS — Qare's public copilot. One docked, collapsible panel per app, kept
+     outside the app's re-rendered root so the conversation survives re-renders.
+     Florence stays internal and is never shown. IRIS advises; a licensed person
+     decides every clinical, quality and regulatory call. */
+  var iris = (function () {
+    var el = null, logEl, chipsEl, ctxEl, inputEl, open = false, busy = false;
+    var cfg = { answer: null, getContext: null };
+
+    function build() {
+      if (el) return;
+      el = document.createElement('div'); el.className = 'iris';
+      el.innerHTML =
+        '<button class="iris-fab" aria-label="Ask IRIS"><span class="iris-mk"></span><span>Ask IRIS</span></button>' +
+        '<section class="iris-panel" role="dialog" aria-label="IRIS copilot" hidden>' +
+          '<header class="iris-h"><span class="iris-mk"></span><b>IRIS</b>' +
+          '<span class="iris-ctx"></span><button class="iris-x" aria-label="Close">&times;</button></header>' +
+          '<div class="iris-log"></div><div class="iris-chips"></div>' +
+          '<form class="iris-in"><input type="text" placeholder="Ask about this view" aria-label="Ask IRIS" autocomplete="off"><button type="submit" aria-label="Send">&uarr;</button></form>' +
+          '<p class="iris-foot">IRIS advises. A licensed person decides every clinical, quality and regulatory call.</p>' +
+        '</section>';
+      document.body.appendChild(el);
+      logEl = el.querySelector('.iris-log'); chipsEl = el.querySelector('.iris-chips');
+      ctxEl = el.querySelector('.iris-ctx'); inputEl = el.querySelector('.iris-in input');
+      el.querySelector('.iris-fab').addEventListener('click', function () { setOpen(!open); });
+      el.querySelector('.iris-x').addEventListener('click', function () { setOpen(false); });
+      el.querySelector('.iris-in').addEventListener('submit', function (e) {
+        e.preventDefault(); var q = inputEl.value.trim(); if (q) { inputEl.value = ''; ask(q); }
+      });
+      chipsEl.addEventListener('click', function (e) {
+        var c = e.target.closest ? e.target.closest('.iris-chip') : null;
+        if (c) { setOpen(true); ask(c.getAttribute('data-q')); }
+      });
+    }
+    function setOpen(v) {
+      open = v; var p = el.querySelector('.iris-panel');
+      if (v) { p.hidden = false; requestAnimationFrame(function () { el.classList.add('open'); }); setTimeout(function () { inputEl.focus(); }, 60); }
+      else { el.classList.remove('open'); setTimeout(function () { p.hidden = true; }, 200); }
+    }
+    function bubble(cls, text) { var d = document.createElement('div'); d.className = 'iris-b ' + cls; d.textContent = text; logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight; return d; }
+    function type(d, text) {
+      if (reduce) { d.textContent = text; logEl.scrollTop = logEl.scrollHeight; return; }
+      busy = true; var i = 0, stepN = Math.max(1, Math.round(text.length / 110));
+      (function run() {
+        if (i <= text.length) { d.textContent = text.slice(0, i); logEl.scrollTop = logEl.scrollHeight; i += stepN; setTimeout(run, 16); }
+        else { d.textContent = text; busy = false; }
+      })();
+    }
+    function ask(q) {
+      if (busy) return; build(); bubble('me', q);
+      var ctx = cfg.getContext ? cfg.getContext() : {};
+      var a = (cfg.answer && cfg.answer(q, ctx)) ||
+        "That reads from this institution's own records on the exchange. Ask me about demand, the cold chain, a batch, the filing, finance or the capital ask.";
+      var d = bubble('iris', ''); var think = document.createElement('span'); think.className = 'iris-dots'; d.appendChild(think);
+      setTimeout(function () { d.textContent = ''; type(d, a); }, reduce ? 0 : 260);
+    }
+    function paintContext() {
+      if (!el) return; var ctx = cfg.getContext ? cfg.getContext() : {};
+      ctxEl.textContent = ctx.label || '';
+      chipsEl.innerHTML = (ctx.suggestions || []).map(function (q) {
+        return '<button class="iris-chip" data-q="' + esc(q) + '">' + esc(q) + '</button>';
+      }).join('');
+    }
+    return {
+      mount: function (c) {
+        cfg.answer = c.answer || null; cfg.getContext = c.getContext || null; build(); paintContext();
+        if (c.greeting) { var d = bubble('iris', ''); setTimeout(function () { type(d, c.greeting); }, 400); }
+      },
+      context: paintContext,
+      ask: function (q) { build(); setOpen(true); ask(q); }
+    };
+  })();
+
   global.QareUI = {
     init: function (app) { selfApp = app; },
     esc: esc, money: money, timeOf: timeOf,
     statusChip: statusChip, topbar: topbar, impactPanel: impactPanel,
-    tenantBar: tenantBar, osNav: osNav, toast: toast, watchToasts: watchToasts
+    tenantBar: tenantBar, osNav: osNav, toast: toast, watchToasts: watchToasts,
+    countUp: countUp, iris: iris, reduce: reduce
   };
 })(typeof window !== 'undefined' ? window : this);

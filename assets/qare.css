@@ -136,8 +136,8 @@ a { color: inherit; text-decoration: none; }
 .tenant .tz { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--iris); background: var(--surface); border-radius: 999px; padding: 1px 7px; }
 .tenant.on .tz { background: #fff; }
 
-/* Live toast when a cross-tab event lands */
-.toast-wrap { position: fixed; right: 20px; bottom: 20px; z-index: 90; display: flex; flex-direction: column; gap: 8px; max-width: 340px; }
+/* Live toast when a cross-tab event lands (docked left so IRIS owns the right) */
+.toast-wrap { position: fixed; left: 20px; bottom: 20px; z-index: 90; display: flex; flex-direction: column; gap: 8px; max-width: 340px; }
 .toast { background: var(--chrome); color: #fff; border-radius: 12px; padding: 12px 14px; box-shadow: var(--card-shadow); font-size: 13px; opacity: 0; transform: translateY(8px); transition: all .25s ease; }
 .toast.in { opacity: 1; transform: none; }
 .toast .t-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--iris-bright); }
@@ -160,3 +160,62 @@ a { color: inherit; text-decoration: none; }
 .feed .ev .tm { font-family: var(--font-mono); font-size: 10px; color: var(--faint); flex: 0 0 56px; }
 .feed .ev.fresh { animation: flash 1.2s ease; }
 @keyframes flash { 0%{background:var(--iris-tint)} 100%{background:transparent} }
+
+/* ---- IRIS: Qare's docked copilot (shared, every app) ---- */
+.iris { position: fixed; right: 20px; bottom: 20px; z-index: 95; }
+.iris-mk { width: 16px; height: 16px; border-radius: 5px; flex: 0 0 auto; background:
+  radial-gradient(circle at 30% 30%, var(--iris-bright), var(--iris-deep)); box-shadow: 0 0 0 3px var(--iris-tint); }
+.iris-fab { display: inline-flex; align-items: center; gap: 9px; font-family: var(--font-brand); font-weight: 700;
+  font-size: 13px; color: #fff; background: var(--iris); border: 0; border-radius: 999px; padding: 11px 18px;
+  cursor: pointer; box-shadow: 0 10px 24px -8px rgba(74,59,166,0.6); transition: transform .15s ease, background .15s ease; }
+.iris-fab:hover { background: var(--iris-deep); transform: translateY(-1px); }
+.iris.open .iris-fab { display: none; }
+.iris-panel { width: 370px; max-width: calc(100vw - 32px); height: 520px; max-height: calc(100vh - 100px);
+  display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--iris-line);
+  border-radius: 18px; box-shadow: 0 30px 70px -28px rgba(27,23,48,0.5); overflow: hidden;
+  opacity: 0; transform: translateY(10px) scale(0.98); transition: opacity .2s ease, transform .2s ease; }
+.iris.open .iris-panel { opacity: 1; transform: none; }
+.iris-h { display: flex; align-items: center; gap: 9px; padding: 13px 15px; border-bottom: 1px solid var(--hairline);
+  background: var(--surface-alt); }
+.iris-h b { font-family: var(--font-brand); font-size: 14px; }
+.iris-ctx { font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--iris); background: var(--surface); border: 1px solid var(--iris-line); border-radius: 999px; padding: 2px 9px; }
+.iris-x { margin-left: auto; background: transparent; border: 0; font-size: 20px; line-height: 1; color: var(--mid); cursor: pointer; padding: 0 4px; }
+.iris-log { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+.iris-b { max-width: 86%; font-size: 13px; line-height: 1.5; padding: 10px 13px; border-radius: 13px; white-space: pre-wrap; }
+.iris-b.iris { align-self: flex-start; background: var(--iris-tint); color: var(--ink); border-bottom-left-radius: 4px; }
+.iris-b.me { align-self: flex-end; background: var(--chrome); color: #fff; border-bottom-right-radius: 4px; }
+.iris-dots { display: inline-block; width: 22px; }
+.iris-dots::after { content: "..."; animation: irisdots 1.2s steps(4, end) infinite; }
+@keyframes irisdots { 0%{content:"."} 33%{content:".."} 66%{content:"..."} }
+.iris-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 15px 10px; }
+.iris-chip { font-size: 12px; color: var(--iris-deep); background: var(--surface-alt); border: 1px solid var(--iris-line);
+  border-radius: 999px; padding: 6px 11px; cursor: pointer; }
+.iris-chip:hover { background: var(--iris-tint); }
+.iris-in { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--hairline); }
+.iris-in input { flex: 1; font-family: var(--font-ui); font-size: 13px; padding: 9px 13px; border: 1px solid var(--border);
+  border-radius: 999px; background: var(--surface); }
+.iris-in input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.iris-in button { flex: 0 0 auto; width: 36px; border: 0; border-radius: 50%; background: var(--iris); color: #fff; font-size: 15px; cursor: pointer; }
+.iris-foot { font-size: 10.5px; color: var(--faint); padding: 0 15px 12px; }
+@media (prefers-reduced-motion: reduce) { .iris-fab, .iris-panel { transition: none; } .iris-dots::after { animation: none; content: "..."; } }
+
+/* ---- Live operating surface: flow strip, clock, streaming feed ---- */
+.flow { display: grid; grid-template-columns: repeat(7, auto); align-items: center; gap: 0; overflow-x: auto;
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--card-radius); padding: 18px 16px; }
+.flow .node { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 92px; text-align: center; }
+.flow .node .dot { width: 38px; height: 38px; border-radius: 11px; background: var(--iris-tint); color: var(--iris-deep);
+  display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-weight: 600; border: 1px solid var(--iris-line); }
+.flow .node.hot .dot { background: var(--inconsistent-tint); color: var(--inconsistent); border-color: var(--inconsistent-tint); }
+.flow .node .nl { font-size: 11px; font-weight: 600; }
+.flow .node .nv { font-family: var(--font-mono); font-size: 11px; color: var(--mid); }
+.flow .link { position: relative; height: 2px; min-width: 28px; background: var(--border); align-self: center; margin-top: -18px; }
+.flow .link::after { content: ""; position: absolute; top: -2px; left: 0; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--iris-bright); animation: flowdot 1.8s linear infinite; }
+.flow .link.hot::after { background: var(--inconsistent); }
+@keyframes flowdot { from { left: -4px; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } to { left: 100%; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .flow .link::after { animation: none; opacity: .6; } }
+.clock { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+.livedot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--verified); margin-right: 6px;
+  box-shadow: 0 0 0 0 rgba(31,157,107,0.5); animation: pulse 2s infinite; vertical-align: middle; }
+.band { font-family: var(--font-mono); font-size: 10px; color: var(--faint); }
