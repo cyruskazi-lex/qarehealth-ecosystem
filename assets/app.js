@@ -232,6 +232,40 @@
     };
   })();
 
+  /* ---- Shared inline charts (no 3D, no donuts; legible on warm paper) ---- */
+  var chartSeq = 0;
+  function lineChart(vals, opts) {
+    opts = opts || {}; var w = 560, h = opts.h || 140, pad = 8, padB = 18, id = 'lc' + (++chartSeq);
+    var max = opts.max != null ? opts.max : Math.max.apply(null, vals);
+    var min = opts.min != null ? opts.min : Math.min.apply(null, vals);
+    var rng = (max - min) || 1, n = vals.length;
+    var color = opts.color || 'var(--iris)';
+    function X(i) { return pad + i * (w - 2 * pad) / (n - 1); }
+    function Y(v) { return pad + (1 - (v - min) / rng) * (h - pad - padB); }
+    var line = vals.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    var area = line + ' L' + X(n - 1).toFixed(1) + ' ' + (h - padB) + ' L' + X(0).toFixed(1) + ' ' + (h - padB) + ' Z';
+    var ticks = (opts.labels || []).map(function (lb, i) { return '<text x="' + X(i).toFixed(1) + '" y="' + (h - 4) + '" text-anchor="middle" class="lc-x">' + esc(lb) + '</text>'; }).join('');
+    return '<svg class="lchart" viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="trend">' +
+      '<defs><linearGradient id="' + id + '" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="' + color + '" stop-opacity=".20"/><stop offset="1" stop-color="' + color + '" stop-opacity="0"/></linearGradient></defs>' +
+      '<path d="' + area + '" fill="url(#' + id + ')"/><path d="' + line + '" fill="none" stroke="' + color + '" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + X(n - 1).toFixed(1) + '" cy="' + Y(vals[n - 1]).toFixed(1) + '" r="3.4" fill="' + color + '"/>' + ticks + '</svg>';
+  }
+  function barsChart(groups, opts) {
+    // groups: [{label, a, b?}]; a and optional b are two series per group.
+    opts = opts || {}; var w = 560, h = opts.h || 150, pad = 8, padB = 18, n = groups.length;
+    var all = []; groups.forEach(function (g) { all.push(g.a); if (g.b != null) all.push(g.b); });
+    var max = Math.max.apply(null, all) || 1;
+    var gw = (w - 2 * pad) / n, paired = groups[0] && groups[0].b != null;
+    var bw = paired ? gw * 0.3 : gw * 0.5;
+    var bars = groups.map(function (g, i) {
+      var cx = pad + i * gw + gw / 2;
+      function bar(v, off, cls) { var bh = (v / max) * (h - pad - padB); return '<rect x="' + (cx + off - bw / 2).toFixed(1) + '" y="' + (h - padB - bh).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="2" class="' + cls + '"/>'; }
+      var out = paired ? bar(g.a, -bw * 0.6, 'bc-a') + bar(g.b, bw * 0.6, 'bc-b') : bar(g.a, 0, 'bc-a');
+      return out + '<text x="' + cx.toFixed(1) + '" y="' + (h - 4) + '" text-anchor="middle" class="lc-x">' + esc(g.label) + '</text>';
+    }).join('');
+    return '<svg class="lchart" viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="bars">' + bars + '</svg>';
+  }
+
   /* ---- Shared trust layer: compliance posture + security engine.
      A cross-cutting rail every app expresses, like the exchange and EESG.
      Compliance is a deal-breaker in regulated health and pharma, so this is
@@ -311,6 +345,7 @@
     esc: esc, money: money, timeOf: timeOf,
     statusChip: statusChip, topbar: topbar, impactPanel: impactPanel,
     tenantBar: tenantBar, osNav: osNav, toast: toast, watchToasts: watchToasts,
-    countUp: countUp, iris: iris, reduce: reduce, trust: Trust, legalFooter: legalFooter
+    countUp: countUp, iris: iris, reduce: reduce, trust: Trust, legalFooter: legalFooter,
+    lineChart: lineChart, barsChart: barsChart
   };
 })(typeof window !== 'undefined' ? window : this);

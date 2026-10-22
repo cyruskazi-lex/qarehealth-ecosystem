@@ -45,6 +45,7 @@
   /* ---------- live state ---------- */
   var discharges = [], incidents = [], staffRoster = [], patients = [], notes = [], doctors = [], nurses = [], tickN = 0, acc = 0;
   var curPatientId = null, noteDraft = null, piiBlur = false, chartDomain = 'whole', glass = {};
+  var inventory = [], orders = [], census = [], admDis = [], readmitHist = [], flowUnit = 'all', curItem = null;
   function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
 
   function seedState() {
@@ -102,6 +103,46 @@
         enc: [[['Oct 20', 'Oct 18', 'Oct 15', 'Oct 12'][i % 4], i % 3 === 0 ? 'Discharge' : 'Clinic review', cur.name], ['Oct 0' + (2 + i % 7), 'Admission', cur.name]]
       });
     }
+    // Assign every patient a bed, ward, length of stay and status (the inpatient roster).
+    var statuses = ['Stable', 'Improving', 'Observation', 'Post-op', 'Critical'];
+    patients.forEach(function (p, idx) {
+      var u = cur.units[idx % cur.units.length];
+      p.unit = u.name; p.bed = u.name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() + '-' + (10 + idx % Math.max(1, u.total));
+      p.los = 1 + idx % 12; p.status = p.risk === 'high' && idx % 5 !== 4 ? 'Observation' : statuses[idx % statuses.length];
+      p.dx = p.problems[0];
+    });
+
+    // Inventory and supply
+    inventory = [
+      { item: 'Oxygen cylinders', cat: 'Medical gases', onHand: 22, par: 30, uom: 'cyl', cold: false, burn: 9 },
+      { item: 'IV fluids, normal saline', cat: 'Fluids', onHand: 310, par: 200, uom: 'bag', cold: false, burn: 48 },
+      { item: 'Blood, O negative', cat: 'Blood bank', onHand: 4, par: 10, uom: 'unit', cold: true, burn: 3 },
+      { item: 'Insulin', cat: 'Pharmacy', onHand: 85, par: 60, uom: 'vial', cold: true, burn: 7 },
+      { item: 'OncoNex-100 (cold chain)', cat: 'Pharmacy', onHand: 18, par: 15, uom: 'vial', cold: true, burn: 2 },
+      { item: 'Surgical gloves', cat: 'PPE', onHand: 1200, par: 800, uom: 'box', cold: false, burn: 60 },
+      { item: 'N95 respirators', cat: 'PPE', onHand: 140, par: 300, uom: 'box', cold: false, burn: 35 },
+      { item: 'Paracetamol injection', cat: 'Pharmacy', onHand: 430, par: 250, uom: 'amp', cold: false, burn: 40 },
+      { item: 'Sutures, assorted', cat: 'Surgical', onHand: 60, par: 100, uom: 'pack', cold: false, burn: 12 },
+      { item: 'Ringer lactate', cat: 'Fluids', onHand: 180, par: 150, uom: 'bag', cold: false, burn: 30 }
+    ];
+    inventory.forEach(function (it) { it.status = it.onHand < it.par ? 'low' : 'ok'; it.days = Math.round(it.onHand / it.burn); });
+
+    // Orders and results (so the module is never empty)
+    orders = [
+      { test: 'HbA1c', patient: 'Amara Okonkwo', value: '8.1 %', flag: 'high', when: '2h ago' },
+      { test: 'Full blood count', patient: 'Rahim Uddin', value: 'Hb 10.2 g/dL', flag: 'low', when: '3h ago' },
+      { test: 'Chest X-ray', patient: 'Jamal Uddin', value: 'Right lower consolidation', flag: 'abnormal', when: '4h ago' },
+      { test: 'Serum creatinine', patient: 'Nasrin Khan', value: '1.4 mg/dL', flag: 'high', when: '5h ago' },
+      { test: 'Troponin I', patient: 'Imran Ahmed', value: 'Negative', flag: '', when: '6h ago' },
+      { test: 'Blood culture', patient: 'Sohel Siddiqui', value: 'Pending', flag: 'pending', when: '7h ago' }
+    ];
+
+    // Chart history
+    census = [138, 141, 139, 144, 146, 142, 148, 145, 150, 147, 149, 146, 151, beds().occ];
+    admDis = [{ label: 'Mon', a: 22, b: 18 }, { label: 'Tue', a: 19, b: 21 }, { label: 'Wed', a: 24, b: 17 }, { label: 'Thu', a: 20, b: 23 }, { label: 'Fri', a: 26, b: 19 }, { label: 'Sat', a: 15, b: 20 }, { label: 'Sun', a: 12, b: 16 }];
+    readmitHist = [7.8, 7.2, 6.9, 6.4, 6.1, 5.8];
+    flowUnit = 'all'; curItem = null;
+
     curPatientId = null; noteDraft = null;
     notes = [
       { id: 'N-0912', pt: 'PT-AMARA', type: 'Discharge summary', by: 'Dr. Naima Islam', when: 'Oct 19', signed: true },
@@ -133,6 +174,9 @@
 
   function beds() { var t = 0, o = 0; cur.units.forEach(function (u) { t += u.total; o += u.occ; }); o += X.admissions().filter(function (a) { return a.orgId === cur.id; }).length; return { total: t, occ: Math.min(t, o) }; }
   function incoming() { var admitted = X.admissions().map(function (a) { return a.household; }); return X.referrals().filter(function (r) { return admitted.indexOf(r.household) < 0; }); }
+  function facilityReadmit() { return readmitHist.length ? readmitHist[readmitHist.length - 1] : 6.1; }
+  function lowStock() { return inventory.filter(function (i) { return i.status === 'low'; }); }
+  function statusChipCls(s) { return s === 'Critical' ? 'inconsistent' : s === 'Observation' || s === 'Post-op' ? 'claimed' : 'verified'; }
 
   /* ---------- small view helpers ---------- */
   function head(t, d) { return '<div class="sec-head"><div><div class="t">' + esc(t) + '</div><div class="d">' + esc(d) + '</div></div><div class="actions"><span class="band"><span class="livedot"></span>one exchange, live</span></div></div>'; }
@@ -140,6 +184,7 @@
   function kpiRow(items) { return '<div class="figs" style="margin-bottom:16px">' + items.map(function (a) { return '<div class="fig"><div class="fv"' + (a[2] ? ' id="' + a[2] + '"' : '') + '>' + a[0] + '</div><div class="fk">' + esc(a[1]) + '</div></div>'; }).join('') + '</div>'; }
   function card(title, inner) { return '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;font-size:14px;margin-bottom:10px">' + esc(title) + '</div>' + inner + '</div>'; }
   function row(left, sub, action) { return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--hairline)"><div><div style="font-size:13px;font-weight:600">' + left + '</div><div class="sub2" style="margin-left:16px">' + sub + '</div></div>' + (action || '') + '</div>'; }
+  function row2(label, val) { return '<div class="row" style="padding:8px 10px"><span class="m">' + esc(label) + '</span><span class="v">' + val + '</span></div>'; }
   function riskChip(r) { var m = { low: 'verified', rising: 'claimed', high: 'inconsistent' }; return '<span class="chip ' + m[r] + '">' + esc(r) + ' risk</span>'; }
   function railChips(m) { var r = m.rails || {}; return '<span class="rails"><span class="rail exch ' + (r.hie ? 'on' : '') + '">HIE</span><span class="rail eesg ' + ((r.eesg && r.eesg.length) ? 'on' : '') + '">EESG</span><span class="rail gic ' + (r.gic ? 'on' : '') + '">GIC</span></span>'; }
 
@@ -321,14 +366,21 @@
     { key: 'command', label: 'Command', ic: 'CM', group: 'Today', core: true, desc: 'The operating surface across the facility.',
       rails: { hie: ['REFERRAL', 'ADMISSION', 'DISCHARGE'], eesg: [], gic: false }, agents: ['Flow', 'Quality', 'Clinical'],
       render: function () {
-        var b = beds(), inc = incoming();
-        return head('Command', 'What needs the facility now. Referrals arrive live from Bridge; the 30-day clock runs in Transitions.') +
-          kpiRow([[b.occ + '/' + b.total, 'beds occupied', 'k-beds'], [inc.length, 'referrals waiting', 'k-ref'], [inWindow().filter(function (d) { return d.risk === 'high'; }).length, 'high readmission risk', 'k-risk'], [readmitRate().toFixed(1) + '%', '30-day readmission', 'k-rr']]) +
-          '<div class="split"><div>' + card('Needs you',
+        var b = beds(), inc = incoming(), low = lowStock();
+        function tile(v, k, mod) { return '<div class="fig click" data-mod="' + mod + '"><div class="fv">' + v + '</div><div class="fk">' + esc(k) + '</div></div>'; }
+        var tiles = '<div class="figs" style="margin-bottom:16px">' +
+          tile(b.occ + '/' + b.total, 'beds occupied', 'flow') + tile(inc.length, 'referrals waiting', 'intake') +
+          tile(inWindow().filter(function (d) { return d.risk === 'high'; }).length, 'high readmission risk', 'transitions') +
+          tile(facilityReadmit().toFixed(1) + '%', '30-day readmission', 'quality') + tile(low.length, 'supplies below par', 'inventory') + '</div>';
+        return head('Command', 'The whole house at a glance. Every tile opens its detail.') + tiles +
+          '<div class="split"><div class="card shadow"><div class="chead" style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div style="font-family:var(--font-brand);font-weight:700">Census, 14 days</div><div class="band mono">' + Math.round(b.occ / b.total * 100) + '% occupancy</div></div>' + UI.lineChart(census, { h: 140 }) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">30-day readmission, 6 months</div>' + UI.lineChart(readmitHist, { h: 140, color: 'var(--verified)', labels: ['', '', '', '', '', 'now'] }) + '<div class="band" style="margin-top:4px">trending down, 7.8% to ' + facilityReadmit().toFixed(1) + '%</div></div></div>' +
+          '<div class="split" style="margin-top:16px"><div>' + card('Needs you',
             (inc.length ? inc.slice().reverse().map(function (r) { return row('<span class="sev warn"></span>Referral: ' + esc(r.patientName), esc(r.village) + ' &middot; ' + esc(r.reason), '<button class="btn btn-primary btn-sm" data-admit="' + esc(r.household) + '">Admit</button>'); }).join('') : '') +
             (inWindow().filter(function (d) { return d.risk === 'high'; }).map(function (d) { return row('<span class="sev crit"></span>High readmission risk: ' + esc(d.patient), 'day ' + dayIn(d) + ' of 30, home health flagged a decline', '<button class="btn btn-ghost btn-sm" data-mod="transitions">Transitions</button>'); }).join('')) +
+            (low.length ? row('<span class="sev warn"></span>' + low.length + ' supplies below par', low.slice(0, 2).map(function (i) { return esc(i.item); }).join(', ') + (low.length > 2 ? ', and more' : ''), '<button class="btn btn-ghost btn-sm" data-mod="inventory">Inventory</button>') : '') +
             row('<span class="sev warn"></span>Night staffing thin', '1:6.8 nurse ratio, below target', '<button class="btn btn-ghost btn-sm" data-mod="staffing">Staffing</button>')) +
-          '</div><div>' + card('IRIS briefing', '<div class="sub" style="font-size:13px">Occupancy is ' + Math.round(b.occ / b.total * 100) + '%. ' + inWindow().length + ' discharges are inside the 30-day window, ' + inWindow().filter(function (d) { return d.risk === 'high'; }).length + ' at high risk. The high-risk one should route back here, not the ED, if it declines. ' + avoided() + ' readmissions avoided this period are verified impact on the Commons. A licensed clinician makes every call.</div>') + '</div></div>' +
+          '</div><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Admissions vs discharges, 7 days</div>' + UI.barsChart(admDis, { h: 150 }) + '<div class="legendrow"><span><i class="a"></i>Admissions</span><span><i class="b"></i>Discharges</span></div></div></div>' +
           prov('reads referrals, admissions, discharges and the floor state from the HIE; posts nothing itself');
       } },
 
@@ -347,17 +399,24 @@
       rails: { hie: ['ADMISSION', 'DISCHARGE'], eesg: [{ pillar: 'Social', front: 'Access and coverage', measure: 'Bed occupancy', valueFn: function () { var b = beds(); return Math.round(b.occ / b.total * 100) + '%'; }, status: 'Verified' }], gic: false }, agents: ['Flow', 'Clinical'],
       render: function () {
         var b = beds();
-        return head('Patient flow', 'Live occupancy by ' + cur.cfg.unitWord + '. Each square is a bed. Discharge frees a bed and starts the 30-day clock.') +
-          kpiRow([[b.occ + '/' + b.total, 'occupied', 'k-beds'], [Math.round(b.occ / b.total * 100) + '%', 'occupancy'], [b.total - b.occ, 'free'], [inWindow().length, 'in discharge window']]) +
-          '<div class="cards3">' + cur.units.map(function (u) {
-            return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="font-size:14px">' + esc(u.name) + '</strong><span class="mono" style="font-size:12px">' + u.occ + '/' + u.total + '</span></div>' +
-              '<div class="wardgrid">' + Array.apply(null, { length: u.total }).map(function (_, i) { return '<span class="bed ' + (i < u.occ ? 'occ' : 'free') + '"></span>'; }).join('') + '</div>' +
-              '<div class="sub2" style="margin-top:8px;font-size:11px">' + (u.total - u.occ) + ' free</div></div>';
-          }).join('') + '</div>' +
-          card('Ready for discharge', [['A. Khan', 'General medicine', '4d'], ['R. Begum', cur.units[0].name, '2d'], ['T. Islam', cur.units[0].name, '1d']].map(function (r) {
-            return row('<span class="sev ok"></span>' + esc(r[0]), esc(r[1]) + ' &middot; LOS ' + esc(r[2]), '<button class="btn btn-primary btn-sm" data-discharge="' + esc(r[0]) + '">Discharge</button>');
-          }).join('')) +
-          prov('occupancy includes live admissions from the HIE; discharge writes back to it');
+        var units = cur.units;
+        var chips = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px"><button class="unitchip' + (flowUnit === 'all' ? ' on' : '') + '" data-flowunit="all">All units <b>' + patients.length + '</b></button>' +
+          units.map(function (u) { var c = patients.filter(function (p) { return p.unit === u.name; }).length; return '<button class="unitchip' + (flowUnit === u.name ? ' on' : '') + '" data-flowunit="' + esc(u.name) + '">' + esc(u.name) + ' <b>' + u.occ + '/' + u.total + '</b></button>'; }).join('') + '</div>';
+        var rows = patients.filter(function (p) { return flowUnit === 'all' || p.unit === flowUnit; });
+        var table = '<div class="qt-wrap" style="max-height:440px;overflow:auto"><table class="qt"><thead><tr><th>Patient</th><th>Bed</th><th>Unit</th><th>Admitting diagnosis</th><th class="num">LOS</th><th>Attending</th><th>Status</th></tr></thead><tbody>' +
+          rows.map(function (p) {
+            return '<tr class="click" data-patient="' + esc(p.id) + '"><td class="nm">' + esc(p.name) + '</td><td class="mono">' + esc(p.bed) + '</td><td class="sub2">' + esc(p.unit) + '</td><td class="sub2">' + esc(p.dx) + '</td><td class="num">' + p.los + 'd</td><td class="sub2">' + esc(p.attending || 'Dr. Naima Islam') + '</td><td><span class="chip ' + statusChipCls(p.status) + '">' + esc(p.status) + '</span></td></tr>';
+          }).join('') + '</tbody></table></div>';
+        var ready = patients.filter(function (p) { return p.status === 'Stable' || p.status === 'Improving'; }).slice(0, 4);
+        return head('Patient flow', 'Who is where, under whom, how long, and what blocks discharge. Click a unit to filter, a patient to open the chart.') +
+          kpiRow([[b.occ + '/' + b.total, 'beds occupied', 'k-beds'], [Math.round(b.occ / b.total * 100) + '%', 'occupancy'], [b.total - b.occ, 'free'], [inWindow().length, 'in discharge window']]) +
+          '<div class="split"><div class="card shadow"><div class="chead" style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div style="font-family:var(--font-brand);font-weight:700">Census, 14 days</div><div class="band mono">' + b.occ + ' now</div></div>' + UI.lineChart(census, { h: 150 }) + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Admissions vs discharges</div>' + UI.barsChart(admDis, { h: 150 }) + '<div class="legendrow"><span><i class="a"></i>Admissions</span><span><i class="b"></i>Discharges</span></div></div></div>' +
+          '<div style="margin-top:16px">' + chips +
+          '<div class="split"><div>' + table + '</div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Ready for discharge</div>' +
+          ready.map(function (p) { return row('<span class="sev ok"></span>' + esc(p.name), esc(p.unit) + ' &middot; LOS ' + p.los + 'd', '<button class="btn btn-primary btn-sm" data-discharge="' + esc(p.name) + '">Discharge</button>'); }).join('') + '</div></div></div>' +
+          prov('the inpatient roster, occupancy and census read from the HIE; discharge writes back and starts the 30-day clock');
       } },
 
     { key: 'emergency', label: 'Emergency', ic: 'ER', group: 'Today', desc: 'Triage board, most acute first.',
@@ -408,6 +467,33 @@
           prov('the staffing ratio is an EESG care-quality measure, and for a SNF it drives the Five-Star rating');
       } },
 
+    { key: 'inventory', label: 'Inventory & supply', ic: 'IV', group: 'Operations', desc: 'Pharmacy, consumables, blood, gases and PPE with par levels and cold chain.',
+      rails: { hie: [], eesg: [{ pillar: 'Governance', front: 'Supply integrity and pharmacovigilance', measure: 'Items above par', valueFn: function () { return (inventory.length - lowStock().length) + ' of ' + inventory.length; }, status: 'Verified' }], gic: false }, agents: ['Supply', 'Pharmacy', 'Logistics'],
+      render: function () {
+        if (curItem) {
+          var it = inventory.filter(function (x) { return x.item === curItem; })[0];
+          if (!it) { curItem = null; }
+          else {
+            var usage = [it.burn + 3, it.burn - 1, it.burn + 2, it.burn, it.burn + 4, it.burn - 2, it.burn + 1].map(function (v) { return Math.max(0, v); });
+            return '<div class="sec-head"><div><div class="t">' + esc(it.item) + '</div><div class="d">' + esc(it.cat) + (it.cold ? ' · cold chain, 2 to 8°C' : '') + '</div></div><div class="actions"><button class="btn btn-ghost btn-sm" data-item-back="1">All items</button><button class="btn btn-primary btn-sm" data-reorder="' + esc(it.item) + '">Reorder via Relay</button></div></div>' +
+              kpiRow([[it.onHand + ' ' + it.uom, 'on hand'], [it.par + ' ' + it.uom, 'par level'], [it.days + 'd', 'cover remaining'], [it.burn + '/' + 'day', 'usage rate']]) +
+              '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Usage, 7 days</div>' + UI.barsChart(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(function (l, i) { return { label: l, a: usage[i] }; }), { h: 140 }) + '</div>' +
+              '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Status</div>' +
+              '<div class="rows">' + row2('Stock vs par', (it.status === 'low' ? '<span class="chip inconsistent">below par</span>' : '<span class="chip verified">ok</span>')) + row2('Cold chain', it.cold ? '<span class="chip iris">monitored</span>' : '<span class="chip">not required</span>') + row2('Lot traceability', '<span class="chip verified">serialised</span>') + row2('Reorder point', it.par + ' ' + it.uom) + '</div>' +
+              (it.status === 'low' ? '<div class="sub2" style="margin-top:10px">Below par. A reorder routes to Relay for serialised, cold-chain-aware delivery.</div>' : '') + '</div></div>' +
+              prov('each item carries its lot and cold-chain history; a reorder is a request event to Relay on the HIE');
+          }
+        }
+        var low = lowStock();
+        return head('Inventory & supply', 'Pharmacy, consumables, blood, gases and PPE against par levels. Click an item to drill in.') +
+          kpiRow([[inventory.length, 'tracked items', 'inv-n'], [low.length, 'below par', 'inv-low'], [inventory.filter(function (i) { return i.cold; }).length, 'cold-chain items'], [Math.min.apply(null, inventory.map(function (i) { return i.days; })) + 'd', 'shortest cover']]) +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Item</th><th>Category</th><th class="num">On hand</th><th class="num">Par</th><th class="num">Cover</th><th>Cold</th><th>Status</th></tr></thead><tbody>' +
+          inventory.map(function (i) {
+            return '<tr class="click" data-item="' + esc(i.item) + '"><td class="nm">' + esc(i.item) + '</td><td class="sub2">' + esc(i.cat) + '</td><td class="num">' + i.onHand + '</td><td class="num">' + i.par + '</td><td class="num">' + i.days + 'd</td><td>' + (i.cold ? '<span class="chip iris">2-8°C</span>' : '') + '</td><td>' + (i.status === 'low' ? '<span class="chip inconsistent">below par</span>' : '<span class="chip verified">ok</span>') + '</td></tr>';
+          }).join('') + '</tbody></table></div>' +
+          prov('low-stock items surface in Command; a reorder routes to Relay for serialised, cold-chain delivery');
+      } },
+
     { key: 'quality', label: 'Clinical quality & safety', ic: 'QS', group: 'Assure', desc: 'Readmissions, HAIs, falls, pressure injuries, incidents.',
       rails: { hie: ['READMIT'], eesg: [ { pillar: 'Social', front: 'Care quality and safety', measure: 'Healthcare-associated infection rate', value: '1.9%', status: 'Verified' }, { pillar: 'Social', front: 'Care quality and safety', measure: 'Falls per 1k bed-days', value: '2.4', status: 'Claimed' } ], gic: true }, agents: ['Quality', 'Infection control', 'Clinical'],
       render: function () {
@@ -450,11 +536,14 @@
     { key: 'orders', label: 'Orders & results', ic: 'OR', group: 'Clinical', desc: 'Lab and imaging orders and results from Prism.',
       rails: { hie: ['LAB_RESULT'], eesg: [], gic: false }, agents: ['Clinical', 'Laboratory'],
       render: function () {
-        var labs = X.labResults();
+        var labs = X.labResults().map(function (l) { return { test: l.testName || l.test || 'Lab', patient: l.patientName || '', value: l.value != null ? String(l.value) : '-', flag: l.flag ? 'high' : '', when: 'live' }; });
+        var all = labs.concat(orders);
+        var flagCls = { high: 'inconsistent', low: 'claimed', abnormal: 'inconsistent', pending: 'unmeasured' };
         return head('Orders & results', 'Lab and imaging orders and their results, returned from Prism over the HIE.') +
-          (labs.length ? '<div class="qt-wrap"><table class="qt"><thead><tr><th>Test</th><th>Result</th><th>Flag</th></tr></thead><tbody>' + labs.slice(-8).reverse().map(function (l) { return '<tr><td class="nm">' + esc(l.testName || l.test || 'Lab') + '</td><td class="mono">' + esc(l.value != null ? l.value : '-') + '</td><td>' + (l.flag ? '<span class="chip inconsistent">' + esc(l.flag) + '</span>' : '<span class="chip verified">normal</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>'
-            : '<div class="card"><div class="sub">No results yet. Resulted tests from Prism arrive here live over the HIE.</div></div>') +
-          prov('results stream from Prism; the order and the result share one record');
+          kpiRow([[all.length, 'results, 24h'], [all.filter(function (o) { return o.flag && o.flag !== 'pending'; }).length, 'flagged'], [all.filter(function (o) { return o.flag === 'pending'; }).length, 'pending'], ['Prism', 'source']]) +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Test</th><th>Patient</th><th>Result</th><th>Flag</th><th>When</th></tr></thead><tbody>' +
+          all.map(function (o) { return '<tr><td class="nm">' + esc(o.test) + '</td><td class="sub2">' + esc(o.patient) + '</td><td class="mono">' + esc(o.value) + '</td><td>' + (o.flag ? '<span class="chip ' + (flagCls[o.flag] || 'claimed') + '">' + esc(o.flag) + '</span>' : '<span class="chip verified">normal</span>') + '</td><td class="sub2">' + esc(o.when) + '</td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('results stream from Prism over the HIE; the order and the result share one record');
       } },
 
     { key: 'assessments', label: 'Assessments & care plans', ic: 'AP', group: 'Clinical', desc: 'The assessment instrument this profile runs.',
@@ -569,9 +658,9 @@
 
   /* ---------- per-profile manifest + overrides ---------- */
   var MANIFEST = {
-    'PROF-HOSP': ['command', 'intake', 'flow', 'emergency', 'theatre', 'transitions', 'staffing', 'chart', 'documentation', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
-    'PROF-SNF': ['command', 'intake', 'flow', 'transitions', 'staffing', 'chart', 'documentation', 'assessments', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
-    'PROF-RES': ['command', 'intake', 'flow', 'transitions', 'staffing', 'chart', 'documentation', 'assessments', 'quality', 'medication', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library']
+    'PROF-HOSP': ['command', 'intake', 'flow', 'emergency', 'theatre', 'transitions', 'staffing', 'inventory', 'chart', 'documentation', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
+    'PROF-SNF': ['command', 'intake', 'flow', 'transitions', 'staffing', 'inventory', 'chart', 'documentation', 'assessments', 'quality', 'medication', 'accreditation', 'orders', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library'],
+    'PROF-RES': ['command', 'intake', 'flow', 'transitions', 'staffing', 'inventory', 'chart', 'documentation', 'assessments', 'quality', 'medication', 'billing', 'finance', 'integration', 'compliance', 'environment', 'eesg', 'impact', 'library']
   };
   var overrides = {};
   function baseEnabled(id) { return (MANIFEST[id] || []).slice(); }
@@ -701,11 +790,15 @@
     }
     var dec = e.target.getAttribute('data-decline'); if (dec) { var d1 = discharges.filter(function (x) { return x.id === dec; })[0]; if (d1) { d1.risk = 'high'; UI.toast('Decline flagged', d1.patient + ' flagged. IRIS raised readmission risk; route to the facility, not the ED.'); render(); } return; }
     var clr = e.target.getAttribute('data-clear'); if (clr) { var d2 = discharges.filter(function (x) { return x.id === clr; })[0]; if (d2) { d2.status = 'cleared'; d2.loop = 'closed'; UI.toast('Recovered', d2.patient + ' cleared the window. One readmission avoided, a verified outcome for the Commons.'); render(); } return; }
-    var pt = e.target.getAttribute('data-patient'); if (pt !== null) { curPatientId = pt || null; chartDomain = 'whole'; glass = {}; render(); return; }
+    var ptEl = e.target.closest('[data-patient]'); if (ptEl) { var pv = ptEl.getAttribute('data-patient'); curPatientId = pv || null; if (pv) mod = 'chart'; chartDomain = 'whole'; glass = {}; render(); return; }
     if (e.target.closest('[data-pii]')) { piiBlur = !piiBlur; render(); return; }
     var dmn = e.target.getAttribute('data-domain'); if (dmn) { chartDomain = dmn; render(); return; }
     var gl = e.target.getAttribute('data-glass'); if (gl) { glass[gl] = true; UI.toast('Break glass', 'Protected note unsealed. The access is logged to the immutable audit trail with your identity and reason.'); render(); return; }
     var ia = e.target.getAttribute('data-iris-ask'); if (ia) { UI.iris.ask(ia); return; }
+    var fu = e.target.closest('[data-flowunit]'); if (fu) { flowUnit = fu.getAttribute('data-flowunit'); render(); return; }
+    var itRow = e.target.closest('[data-item]'); if (itRow) { curItem = itRow.getAttribute('data-item'); render(); return; }
+    if (e.target.closest('[data-item-back]')) { curItem = null; render(); return; }
+    var ro = e.target.getAttribute('data-reorder'); if (ro) { UI.toast('Reorder sent', ro + ' reorder routed to Relay for serialised, cold-chain delivery.'); return; }
     var nn = e.target.getAttribute('data-newnote'); if (nn) { mod = 'documentation'; noteDraft = { pt: nn, mode: 'translate', stage: 'start' }; render(); return; }
     var sn = e.target.getAttribute('data-startnote'); if (sn) {
       noteDraft = { pt: curPatientId || 'PT-AMARA', mode: sn, stage: 'capturing' };
@@ -733,11 +826,10 @@
   });
 
   function greetingFor(r) {
-    var tail = ' I advise; a licensed clinician makes every clinical call.';
-    if (r === 'nurse') return 'I am IRIS. I help you through the shift: your patients, what is due, and drafting notes by voice or a translated patient conversation.' + tail + ' Ask me about your list.';
-    if (r === 'doctor') return 'I am IRIS. I surface the clinical picture: who is at risk, what the record supports, and orders to consider, always with the evidence.' + tail + ' Ask me about a patient.';
-    if (r === 'quality') return 'I am IRIS. I track readmissions, deviations, infections, falls and survey readiness for this facility.' + tail + ' Ask me where quality is slipping.';
-    return 'I am IRIS, Apex\'s copilot. I watch the floor, the referral queue, the 30-day discharge window and the capital ask.' + tail + ' Ask me what needs you.';
+    if (r === 'nurse') return 'IRIS here. Ask about your patients or let me draft a note.';
+    if (r === 'doctor') return 'IRIS here. Ask me about a patient or their risk.';
+    if (r === 'quality') return 'IRIS here. Ask where quality is slipping.';
+    return 'IRIS here. Ask what needs attention.';
   }
 
   window.QareAuth.boot({

@@ -669,11 +669,10 @@
   });
 
   function greetingFor(r) {
-    var tail = ' I show which specialists I consulted. I advise; a licensed person makes every quality and regulatory call.';
-    if (r === 'quality') return 'I am IRIS. I track deviations, CAPA, batch release and the cold chain for the plant.' + tail + ' Ask me what is open.';
-    if (r === 'regulatory') return 'I am IRIS. I watch registrations, variations and submissions across your markets.' + tail + ' Ask me what is at risk.';
-    if (r === 'cfo') return 'I am IRIS. I read working capital, receivables and the value of live demand against plan.' + tail + ' Ask me about the cash position.';
-    return 'I am IRIS, Nexus\'s copilot. I read demand, the cold chain, quality, serialisation and the capital ask across every enabled module.' + tail + ' Ask me what needs you.';
+    if (r === 'quality') return 'IRIS here. Ask what is open in quality.';
+    if (r === 'regulatory') return 'IRIS here. Ask what filing is at risk.';
+    if (r === 'cfo') return 'IRIS here. Ask about the cash position.';
+    return 'IRIS here. Ask what needs attention.';
   }
 
   window.QareAuth.boot({
