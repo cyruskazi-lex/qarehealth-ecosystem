@@ -596,7 +596,7 @@
       UI.topbar({ appName: 'Nexus', personaName: who.name, personaRole: who.role + ' · ' + cur.name, role: SESSION ? SESSION.roleLabel : null, trustLabel: UI.trust.badgeLabel('pharma') }) +
       '<div class="os">' + UI.osNav(navModules(), mod) +
         '<main class="os-main">' + UI.tenantBar(orgs, cur.id) + '<div style="margin-top:16px">' + (moduleByKey(mod).render()) + '</div></main>' +
-      '</div>';
+      '</div>' + UI.legalFooter({ sector: 'pharma' });
     UI.iris.context();
     paintLive(true);
   }

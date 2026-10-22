@@ -296,11 +296,22 @@
     return { FRAMEWORKS: FRAMEWORKS, SECURITY: SECURITY, forSector: forSector, render: render, badgeLabel: badgeLabel, eesgMetrics: eesgMetrics };
   })();
 
+  function legalFooter(opts) {
+    opts = opts || {};
+    var reg = opts.sector === 'pharma' ? '21 CFR Part 11, EU GMP Annex 11' : 'HIPAA, HITECH';
+    return '<footer class="legalbar">' +
+      '<span class="lb-co">&copy; 2026 Qäre Health</span>' +
+      '<span>A Lexington Group company</span>' +
+      '<span class="lb-links"><a href="#">Terms</a><a href="#">Privacy</a><a href="#">Security</a><a href="#">Data governance</a><a href="#">' + esc(reg) + '</a></span>' +
+      '<span class="lb-note"><span class="shield"></span> Encrypted and audit-logged. IRIS advises; a licensed professional makes every clinical, quality and regulatory decision. Demonstration environment, not for use with real patient data.</span>' +
+      '</footer>';
+  }
+
   global.QareUI = {
     init: function (app) { selfApp = app; },
     esc: esc, money: money, timeOf: timeOf,
     statusChip: statusChip, topbar: topbar, impactPanel: impactPanel,
     tenantBar: tenantBar, osNav: osNav, toast: toast, watchToasts: watchToasts,
-    countUp: countUp, iris: iris, reduce: reduce, trust: Trust
+    countUp: countUp, iris: iris, reduce: reduce, trust: Trust, legalFooter: legalFooter
   };
 })(typeof window !== 'undefined' ? window : this);

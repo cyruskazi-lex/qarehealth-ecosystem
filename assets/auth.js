@@ -52,8 +52,11 @@
             '<button class="auth-ssobtn" data-sso="Google Workspace">Google Workspace</button>' +
             '<button class="auth-ssobtn" data-sso="SAML SSO">SAML / Okta</button>' +
           '</div>' +
-          '<div class="auth-demo">Demo access: <b>' + DEMO.email + '</b> / <b>' + DEMO.pw + '</b></div>' +
-          '<div class="auth-trust"><span class="shield"></span>Encrypted, MFA, audit-logged. HIPAA and ' + (sector === 'pharma' ? '21 CFR Part 11' : 'ISO 27001') + ' compliant.</div>' +
+          '<button type="button" class="auth-demobtn" data-demo="1">Use demo access</button>' +
+          '<div class="auth-trust"><span class="shield"></span>Encrypted, MFA enforced, audit-logged. HIPAA and ' + (sector === 'pharma' ? '21 CFR Part 11' : 'ISO 27001') + ' compliant.</div>' +
+          '<div class="auth-legal">&copy; 2026 Qäre Health. A Lexington Group company.<br>' +
+            '<a href="#" data-legal="terms">Terms</a> &middot; <a href="#" data-legal="privacy">Privacy</a> &middot; <a href="#" data-legal="security">Security</a> &middot; <a href="#" data-legal="governance">Data governance</a><br>' +
+            '<span class="auth-note">Demonstration environment. Not for use with real patient data or for clinical decisions.</span></div>' +
         '</div></div>'
       );
       var f = document.getElementById('auth-form');
@@ -74,6 +77,8 @@
       Array.prototype.forEach.call(document.querySelectorAll('.auth-ssobtn'), function (b) {
         b.addEventListener('click', function () { go(b.getAttribute('data-sso'), DEMO.email); });
       });
+      var demoBtn = document.querySelector('[data-demo]');
+      if (demoBtn) demoBtn.addEventListener('click', function () { document.getElementById('auth-pw').value = DEMO.pw; go('password', DEMO.email); });
     }
 
     function go(method, email) {
