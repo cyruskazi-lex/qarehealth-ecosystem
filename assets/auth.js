@@ -19,6 +19,8 @@
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function logo() { return (global.__QARE_LOGO__) ? global.__QARE_LOGO__ : '../../assets/brand/qare-wordmark.png'; }
+  function hero() { return (global.__QARE_HERO__) ? global.__QARE_HERO__ : '../../assets/brand/hero-ecosystem.jpg'; }
+  function wrapStyle() { return ' style="--hero:url(\'' + hero() + '\')"'; }
   function load() { try { return JSON.parse(global.sessionStorage.getItem(SKEY)); } catch (e) { return null; } }
   function save(s) { try { global.sessionStorage.setItem(SKEY, JSON.stringify(s)); } catch (e) {} }
 
@@ -35,7 +37,7 @@
 
     function loginView(err) {
       screen(
-        '<div class="auth-wrap"><div class="auth-card">' +
+        '<div class="auth-wrap"' + wrapStyle() + '><div class="auth-card">' +
           '<div class="auth-brand"><img src="' + logo() + '" alt="Qäre" class="auth-logo"> Health</div>' +
           '<div class="auth-app">' + esc(app) + '</div>' +
           '<div class="auth-sub">Sign in to the ' + esc(app) + ' operating system</div>' +
@@ -89,7 +91,7 @@
         'Loading ' + (sector === 'pharma' ? '21 CFR Part 11' : 'HIPAA') + '-compliant workspace'
       ];
       var d = screen(
-        '<div class="auth-wrap"><div class="splash">' +
+        '<div class="auth-wrap"' + wrapStyle() + '><div class="splash">' +
           '<div class="auth-brand big"><img src="' + logo() + '" alt="Qäre" class="auth-logo"> Health</div>' +
           '<div class="splash-app">' + esc(app) + '</div>' +
           '<div class="splash-steps" id="splash-steps">' + steps.map(function (s, i) { return '<div class="splash-step" data-i="' + i + '"><span class="sdot"></span>' + esc(s) + '</div>'; }).join('') + '</div>' +
