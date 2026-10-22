@@ -43,7 +43,7 @@
   function profileTabs() { return PROFILES.map(function (p) { return { id: p.id, name: p.name, sizeClass: p.tag }; }); }
 
   /* ---------- live state ---------- */
-  var discharges = [], incidents = [], staffRoster = [], patients = [], notes = [], tickN = 0, acc = 0;
+  var discharges = [], incidents = [], staffRoster = [], patients = [], notes = [], doctors = [], nurses = [], tickN = 0, acc = 0;
   var curPatientId = null, noteDraft = null, piiBlur = false, chartDomain = 'whole', glass = {};
   function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
 
@@ -66,6 +66,42 @@
         care: 'Antenatal clinic, fortnightly', from: 'Bhorosha Primary Care',
         enc: [['Oct 18', 'Antenatal review', 'Metro Polyclinic Network'], ['Oct 04', 'Antenatal review', 'Metro Polyclinic Network']] }
     ];
+    // ---- Sample staff: 10 doctors, 10 nurses ----
+    var dFirst = ['Naima', 'Imran', 'Ayesha', 'Kamal', 'Selim', 'Tahmina', 'Rahim', 'Sharmin', 'Jahangir', 'Lila'];
+    var dLast = ['Islam', 'Chowdhury', 'Siddiqua', 'Uddin', 'Reza', 'Rahman', 'Khan', 'Akhtar', 'Alam', 'Fernando'];
+    var specialties = ['Cardiology', 'Internal medicine', 'General surgery', 'Paediatrics', 'Pulmonology', 'Nephrology', 'Orthopaedics', 'Obstetrics', 'Emergency medicine', 'Endocrinology'];
+    doctors = [];
+    for (var di = 0; di < 10; di++) doctors.push({ id: 'DR-' + (di + 1), name: 'Dr. ' + dFirst[di] + ' ' + dLast[di], role: specialties[di], status: di % 4 === 0 ? 'On call' : 'On shift' });
+    var nFirst = ['Shahana', 'Nusrat', 'Fatima', 'Rubina', 'Shaheen', 'Nasrin', 'Rokeya', 'Taslima', 'Sabina', 'Dilruba'];
+    var nLast = ['Akter', 'Jahan', 'Begum', 'Haque', 'Sultana', 'Parveen', 'Khatun', 'Nahar', 'Yasmin', 'Banu'];
+    nurses = [];
+    for (var ni = 0; ni < 10; ni++) nurses.push({ id: 'NR-' + (ni + 1), name: nFirst[ni] + ' ' + nLast[ni], role: (cur.units[ni % cur.units.length] ? cur.units[ni % cur.units.length].name : 'Ward') + ' nurse', status: ni % 3 === 0 ? 'Night' : ni % 3 === 1 ? 'Evening' : 'Day' });
+
+    // ---- Sample patients: generate up to 50 (3 canonical + generated) ----
+    var pmF = ['Imran', 'Karim', 'Sohel', 'Tanvir', 'Jamal', 'Faruk', 'Nasir', 'Hasan', 'Mamun', 'Shakil', 'Rafiq', 'Masud', 'Arif', 'Monir', 'Russel', 'Shafiq', 'Babul', 'Jubayer', 'Rony', 'Sumon'];
+    var pfF = ['Ayesha', 'Rubina', 'Laila', 'Nasrin', 'Rokeya', 'Shireen', 'Sultana', 'Parveen', 'Jesmin', 'Momena', 'Rahima', 'Sabina', 'Nargis', 'Shabnam', 'Kohinoor', 'Dilruba', 'Afroza', 'Sharmin', 'Nadia', 'Rina'];
+    var pLast = ['Ahmed', 'Khan', 'Hossain', 'Rahman', 'Islam', 'Chowdhury', 'Akter', 'Begum', 'Uddin', 'Das', 'Sarkar', 'Haque', 'Alam', 'Mia', 'Siddiqui', 'Bhuiyan', 'Molla', 'Sheikh', 'Talukder', 'Karim'];
+    var probPool = ['Type 2 diabetes', 'Hypertension', 'COPD', 'Heart failure (NYHA II)', 'Asthma', 'Chronic kidney disease', 'Post-operative recovery', 'Community-acquired pneumonia', 'Stroke rehabilitation', 'Ischaemic heart disease', 'Osteoarthritis', 'Iron-deficiency anaemia', 'Hypothyroidism', 'Dengue, recovering', 'Peptic ulcer disease'];
+    var medPool = ['Metformin 500 mg BD', 'Amlodipine 5 mg OD', 'Losartan 50 mg OD', 'Atorvastatin 20 mg OD', 'Furosemide 40 mg OD', 'Salbutamol inhaler PRN', 'Omeprazole 20 mg OD', 'Levothyroxine 50 mcg OD', 'Aspirin 75 mg OD', 'Insulin basal 10 units nocte'];
+    var allergyPool = ['None known', 'Penicillin', 'Sulfa drugs', 'Aspirin', 'None known', 'None known'];
+    var referrers = ['Union Health Outreach', 'Sylhet CHW Program', 'National CHW Corps', 'Bhorosha Primary Care', 'Shetu Medical Centre'];
+    var riskCycle = ['low', 'low', 'rising', 'low', 'high', 'low', 'rising', 'low', 'low', 'high'];
+    for (var i = 0; i < 47; i++) {
+      var male = i % 2 === 0;
+      var nm = (male ? pmF[i % pmF.length] : pfF[i % pfF.length]) + ' ' + pLast[(i * 7) % pLast.length];
+      var p1 = probPool[i % probPool.length], p2 = probPool[(i * 3 + 5) % probPool.length];
+      var doc = doctors[i % doctors.length], nur = nurses[(i * 3) % nurses.length];
+      patients.push({
+        id: 'PT-' + (1000 + i), name: nm, age: 28 + (i * 5) % 58, sex: male ? 'M' : 'F',
+        mrn: 'QH-PT-' + (101000 + i * 7), loc: ['Dhaka', 'Gazipur', 'Sylhet', 'Chattogram', 'Narsingdi'][i % 5], lang: 'Bangla',
+        code: i % 9 === 0 ? 'DNR' : 'Full code', risk: riskCycle[i % riskCycle.length],
+        allergies: [allergyPool[i % allergyPool.length]], problems: p1 === p2 ? [p1] : [p1, p2],
+        meds: [medPool[i % medPool.length], medPool[(i * 2 + 1) % medPool.length]],
+        care: i % 3 === 0 ? 'Home health visit; 30-day window open' : i % 3 === 1 ? 'Outpatient review, fortnightly' : 'Inpatient, under ' + doc.role.toLowerCase(),
+        from: referrers[i % referrers.length], attending: doc.name, attendingRole: doc.role, nurse: nur.name,
+        enc: [[['Oct 20', 'Oct 18', 'Oct 15', 'Oct 12'][i % 4], i % 3 === 0 ? 'Discharge' : 'Clinic review', cur.name], ['Oct 0' + (2 + i % 7), 'Admission', cur.name]]
+      });
+    }
     curPatientId = null; noteDraft = null;
     notes = [
       { id: 'N-0912', pt: 'PT-AMARA', type: 'Discharge summary', by: 'Dr. Naima Islam', when: 'Oct 19', signed: true },
@@ -120,13 +156,15 @@
   function riskBanner(r) { var m = { low: 'verified', rising: 'claimed', high: 'inconsistent' }; return '<span class="chip ' + m[r] + '">' + esc(r) + ' readmission risk</span>'; }
   function chartHTML() {
     if (!curPatientId) {
+      var hi = patients.filter(function (p) { return p.risk === 'high'; }).length;
       return head('Patient chart', 'The native record, holistic across encounters and connected sources. Open a patient to see the chart.') +
+        kpiRow([[patients.length, 'patients', false], [hi, 'high readmission risk', false], [doctors.length, 'physicians on service', false], [nurses.length, 'nurses rostered', false]]) +
         '<div class="toolbar"><input class="search" placeholder="Search patients by name or MRN" disabled></div>' +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>MRN</th><th>Age/Sex</th><th>Key problems</th><th>Risk</th><th></th></tr></thead><tbody>' +
+        '<div class="qt-wrap" style="max-height:520px;overflow:auto"><table class="qt"><thead><tr><th>Patient</th><th>MRN</th><th>Age/Sex</th><th>Key problems</th><th>Attending</th><th>Risk</th><th></th></tr></thead><tbody>' +
         patients.map(function (p) {
-          return '<tr><td class="nm">' + esc(p.name) + '</td><td class="mono">' + esc(p.mrn) + '</td><td>' + p.age + ' / ' + esc(p.sex) + '</td><td class="sub2">' + esc(p.problems.slice(0, 2).join(', ')) + '</td><td>' + riskBanner(p.risk) + '</td><td style="text-align:right"><button class="btn btn-primary btn-sm" data-patient="' + esc(p.id) + '">Open chart</button></td></tr>';
+          return '<tr><td class="nm">' + esc(p.name) + '</td><td class="mono">' + esc(p.mrn) + '</td><td>' + p.age + ' / ' + esc(p.sex) + '</td><td class="sub2">' + esc(p.problems.slice(0, 2).join(', ')) + '</td><td class="sub2">' + esc(p.attending || 'Dr. Naima Islam') + '</td><td>' + riskBanner(p.risk) + '</td><td style="text-align:right"><button class="btn btn-primary btn-sm" data-patient="' + esc(p.id) + '">Open chart</button></td></tr>';
         }).join('') + '</tbody></table></div>' +
-        prov('one longitudinal record per patient; native data plus what the HIE and connected networks return, de-duplicated');
+        prov(patients.length + ' patients on the service; one longitudinal record each, native data plus what the HIE and connected networks return');
     }
     var p = patientById(curPatientId), cd = chartData(p);
     return '<div class="sec-head"><div><div class="t">Unified care record</div><div class="d">Holistic across encounters, labs, pharmacy and connected sources, with the care plan, risk and compliance in one view.</div></div>' +
@@ -217,7 +255,7 @@
       ],
       timeline: p.enc.map(function (e, i) { return { id: 'G' + i, date: e[0], kind: i === 0 ? 'DC' : 'ADM', badge: i === 0 ? 'DC' : 'ADM', domain: 'Clinical', dkey: 'clinical', goal: '', title: e[1], desc: e[2] + '.' }; }),
       risk: { score: p.risk === 'high' ? '4.0' : p.risk === 'rising' ? '3.4' : '2.1', trend: p.risk === 'rising' ? 'up' : 'flat', note: 'last evaluated today', domains: [{ name: 'Clinical', score: '3.2' }, { name: 'Adherence', score: '3.0' }, { name: 'Social', score: '2.4' }] },
-      team: [{ name: cur.persona.name, role: cur.persona.role }, { name: 'Care coordinator', role: 'Transitions' }],
+      team: [{ name: p.attending || 'Dr. Naima Islam', role: (p.attendingRole || 'Attending') }, { name: p.nurse || cur.persona.name, role: 'Primary nurse' }, { name: 'Care coordinator', role: 'Transitions' }],
       family: [{ name: 'Next of kin', rel: 'Family', consent: true }],
       checklist: [{ label: 'Consent on file', ok: true }, { label: 'Medication reconciliation', ok: true }, { label: 'Care plan signed', ok: p.risk !== 'high' }],
       insights: [{ kind: p.risk === 'high' ? 'CRITICAL' : 'RISK', text: 'Primary problem is ' + p.problems[0] + '. Reinforce the care plan and confirm the next review is booked.' }, { kind: 'OPPORTUNITY', text: 'Family is consented in Nova and can support the plan at home.' }]
@@ -358,11 +396,16 @@
     { key: 'staffing', label: 'Staffing & roster', ic: 'SF', group: 'Operations', desc: 'Nurse-to-patient ratios, the Five-Star measure.',
       rails: { hie: [], eesg: [{ pillar: 'Social', front: 'Care quality and safety', measure: 'Nurse-to-patient ratio, peak', value: '1:6.8', status: 'Inconsistent' }], gic: false }, agents: ['Staffing', 'Quality'],
       render: function () {
-        return head('Staffing & roster', 'Nurse-to-patient ratios by shift. For a nursing facility this is the Five-Star staffing measure.') +
-          kpiRow([['95', 'nurses rostered'], ['1:4.8', 'mean ratio'], ['1:6.8', 'night ratio'], ['8%', 'agency use']]) +
+        return head('Staffing & roster', 'The clinical workforce: physicians on service, nurses rostered, and the ratios that drive the Five-Star measure.') +
+          kpiRow([[doctors.length, 'physicians on service'], [nurses.length, 'nurses rostered'], ['1:4.8', 'mean ratio'], ['1:6.8', 'night ratio']]) +
           '<div class="qt-wrap"><table class="qt"><thead><tr><th>Shift</th><th class="num">Nurses</th><th class="num">Patients</th><th>Ratio</th><th>Status</th></tr></thead><tbody>' +
           staffRoster.map(function (s) { return '<tr><td class="nm">' + esc(s.shift) + '</td><td class="num">' + s.nurses + '</td><td class="num">' + s.patients + '</td><td class="mono">' + esc(s.ratio) + '</td><td>' + (s.status === 'warn' ? '<span class="chip claimed">below target</span>' : '<span class="chip verified">ok</span>') + '</td></tr>'; }).join('') +
-          '</tbody></table></div>' + prov('the staffing ratio is an EESG care-quality measure, and for a SNF it drives the Five-Star rating');
+          '</tbody></table></div>' +
+          '<div class="split" style="margin-top:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Physicians on service</div>' +
+          '<div class="qt-wrap" style="border:0;max-height:320px;overflow:auto"><table class="qt"><tbody>' + doctors.map(function (d) { return '<tr><td class="nm">' + esc(d.name) + '</td><td class="sub2">' + esc(d.role) + '</td><td style="text-align:right"><span class="chip ' + (d.status === 'On call' ? 'claimed' : 'verified') + '">' + esc(d.status) + '</span></td></tr>'; }).join('') + '</tbody></table></div></div>' +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Nurses rostered</div>' +
+          '<div class="qt-wrap" style="border:0;max-height:320px;overflow:auto"><table class="qt"><tbody>' + nurses.map(function (n) { return '<tr><td class="nm">' + esc(n.name) + '</td><td class="sub2">' + esc(n.role) + '</td><td style="text-align:right"><span class="chip ' + (n.status === 'Night' ? 'claimed' : 'verified') + '">' + esc(n.status) + '</span></td></tr>'; }).join('') + '</tbody></table></div></div></div>' +
+          prov('the staffing ratio is an EESG care-quality measure, and for a SNF it drives the Five-Star rating');
       } },
 
     { key: 'quality', label: 'Clinical quality & safety', ic: 'QS', group: 'Assure', desc: 'Readmissions, HAIs, falls, pressure injuries, incidents.',
