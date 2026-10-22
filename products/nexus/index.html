@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Qäre Nexus</title>
-<meta name="description" content="Nexus, the operating system for pharma. Live demand, supply chain, quality, pharmacovigilance and the capital rail, on one exchange." />
+<meta name="description" content="Nexus, the operating system for pharma. A configurable element library, each module wired to the exchange, EESG and the GIC capital rail." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -25,14 +25,19 @@
   var mod = 'command';
 
   var REGIONS = ['Dhaka', 'Chattogram', 'Sylhet', 'Khulna', 'Rajshahi'];
-  var NXDRUGS = ['CARDINEX-10', 'ONCONEX-100'];
-  var seedById = {};              // exchange event ids already folded into demand
-  var demand = [];                // local live picture: baseline + ambient + exchange
-  var cold = { series: [], breach: false, product: 'OncoNex-100', shipment: 'SHP-ONC-4471' };
-  var stockoutAt = 0;             // timestamp the cover runs out
-  var held = {};                  // lots this operator has held
-  var acked = {};                 // decisions acknowledged
-  var tickN = 0;
+  var seedById = {};
+  var demand = [], cold = { series: [], breach: false, product: 'OncoNex-100', shipment: 'SHP-ONC-4471' };
+  var stockoutAt = 0, tickN = 0;
+  var held = {}, acked = {};
+
+  // live state for the newly live modules
+  var batches = [], deviations = [], scans = { serialized: 0, total: 0, blocked: 0, feed: [] };
+  var env = { carbon: 12, water: 71, effluent: 'within', waste: 86 };
+  var suppliers = [
+    { name: 'Hovid API Works', material: 'API, cardiovascular', status: 'Qualified', score: 92 },
+    { name: 'Gujarat Excipients', material: 'Excipients', status: 'Review', score: 74 },
+    { name: 'DhakaPack Ltd', material: 'Primary packaging', status: 'At risk', score: 58 }
+  ];
 
   function scale() { return cur.sizeClass === 'LARGE' ? 1 : cur.sizeClass === 'MEDIUM' ? 0.4 : 0.12; }
   function baseCount() { return cur.sizeClass === 'LARGE' ? 11 : cur.sizeClass === 'MEDIUM' ? 7 : 4; }
@@ -47,11 +52,10 @@
       code: code, name: nameOf(code), qty: qty, region: region, ts: ts, src: src, fresh: !!fresh });
     if (demand.length > 60) demand = demand.slice(-60);
   }
+  function addDeviation(d) { if (!deviations.some(function (x) { return x.id === d.id; })) deviations.unshift(d); }
 
-  // A recent baseline this institution owns, so Nexus boots alive. Live dispensing
-  // from Cura and cold-chain from Relay overlay this through the exchange.
   function seedBaseline() {
-    demand = []; seedById = {}; var now = Date.now(); var n = baseCount();
+    demand = []; seedById = {}; var now = Date.now(), n = baseCount();
     for (var i = 0; i < n; i++) {
       var code = Math.random() < 0.7 ? 'CARDINEX-10' : 'ONCONEX-100';
       pushDemand(code, code === 'ONCONEX-100' ? rnd(1, 3) : rnd(2, 9), pick(REGIONS), now - rnd(4, 180) * 60000, 'baseline', false);
@@ -60,11 +64,17 @@
     cold.series = []; for (var j = 0; j < 14; j++) cold.series.push(+(4.2 + Math.random() * 1.6).toFixed(1));
     cold.breach = false;
     stockoutAt = now + coverDays() * 86400000 + rnd(0, 20) * 3600000;
+    batches = [
+      { line: 'Line 1', product: 'CardiNex-10', batch: 'BATCH-CARD-0342', oee: 86, status: 'Running', progress: rnd(30, 70) },
+      { line: 'Line 2', product: 'OncoNex-100', batch: 'BATCH-ONCO-0101', oee: 78, status: 'Running', progress: rnd(20, 55) },
+      { line: 'Line 3', product: 'Metformin 500', batch: 'BATCH-MET-0590', oee: 81, status: 'Changeover', progress: rnd(5, 20) }
+    ];
+    deviations = [{ id: 'DV-0218', product: 'CardiNex-10', type: 'In-process', status: 'CAPA', note: 'tablet hardness drift on Line 1, CAPA open' }];
+    var pk = cur.sizeClass === 'LARGE' ? 2400000 : cur.sizeClass === 'MEDIUM' ? 960000 : 288000;
+    scans = { serialized: Math.round(pk * 0.98), total: pk, blocked: rnd(2, 7), feed: [] };
+    env = { carbon: 12, water: 71, effluent: 'within', waste: 86 };
   }
 
-  // Fold real exchange events into the live picture: dispensing of a Nexagen drug
-  // (DEMAND_SIGNAL from Cura, or any RX_DISPENSED of a Nexagen product) and a
-  // cold-chain breach from Relay.
   function foldExchange() {
     X.events().forEach(function (e) {
       if (seedById[e.id]) return;
@@ -72,64 +82,46 @@
       if (e.type === 'DEMAND_SIGNAL' && p.maker === 'ORG-NEXAGEN') {
         seedById[e.id] = 1; pushDemand(p.drug || 'CARDINEX-10', p.qty || 1, p.region || 'Dhaka', e.ts, 'exchange', true);
       } else if (e.type === 'RX_DISPENSED') {
-        var code = p.drug || p.code; var d = code ? X.drug(code) : null;
+        var code = p.drug || p.code, d = code ? X.drug(code) : null;
         if (d && d.maker === 'ORG-NEXAGEN') { seedById[e.id] = 1; pushDemand(code, p.qty || 1, p.region || 'Dhaka', e.ts, 'exchange', true); }
       } else if (e.type === 'COLD_CHAIN_ALERT' && (p.maker === 'ORG-NEXAGEN' || !p.maker)) {
         seedById[e.id] = 1; cold.breach = true; cold.product = p.product || cold.product; cold.shipment = p.shipment || cold.shipment;
         if (p.temp) cold.series.push(+p.temp);
+        addDeviation({ id: 'DV-COLD-' + (p.shipment || 'X'), product: cold.product, type: 'Cold chain', status: 'Open', note: cold.shipment + ' out of 2 to 8 band, lot quarantined pending QP review' });
       }
     });
     demand.sort(function (a, b) { return a.ts - b.ts; });
   }
 
-  function totals() {
-    var u = 0, v = 0; demand.forEach(function (d) { u += d.qty; v += d.qty * price(d.code); });
-    return { units: u, value: v };
-  }
+  function totals() { var u = 0, v = 0; demand.forEach(function (d) { u += d.qty; v += d.qty * price(d.code); }); return { units: u, value: v }; }
   function clockText() {
     var ms = Math.max(0, stockoutAt - Date.now());
     var d = Math.floor(ms / 86400000), h = Math.floor(ms % 86400000 / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000);
     return d + 'd ' + (h < 10 ? '0' : '') + h + 'h ' + (m < 10 ? '0' : '') + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
   }
   function coldNow() { return cold.series[cold.series.length - 1]; }
+  function serialPct() { return scans.total ? (scans.serialized / scans.total * 100) : 0; }
+  function openDevs() { return deviations.filter(function (d) { return d.status !== 'Closed'; }); }
 
-  /* ---------------- modules ---------------- */
-
-  var MODS = [
-    { key: 'command', label: 'Command', ic: 'CM', group: 'Operate' },
-    { key: 'supply', label: 'Supply chain', ic: 'SC', group: 'Operate' },
-    { key: 'manufacturing', label: 'Manufacturing', ic: 'MF', group: 'Operate' },
-    { key: 'quality', label: 'Quality', ic: 'QA', group: 'Assure' },
-    { key: 'safety', label: 'Safety intelligence', ic: 'SI', group: 'Assure' },
-    { key: 'regulatory', label: 'Regulatory', ic: 'RG', group: 'Assure' },
-    { key: 'demand', label: 'Demand', ic: 'DM', group: 'Commercial' },
-    { key: 'finance', label: 'Finance', ic: 'FN', group: 'Commercial' },
-    { key: 'sustainability', label: 'Sustainability', ic: 'SU', group: 'Impact' },
-    { key: 'impact', label: 'Impact and GIC', ic: 'IM', group: 'Impact' }
-  ];
-
+  /* ---------- small shared view helpers ---------- */
   function head(t, d) { return '<div class="sec-head"><div><div class="t">' + esc(t) + '</div><div class="d">' + esc(d) + '</div></div>' +
     '<div class="actions"><span class="band"><span class="livedot"></span>one exchange, live</span></div></div>'; }
   function prov(t) { return '<p class="provenance">' + esc(t) + '</p>'; }
-
+  function kpiRow(items) { return '<div class="figs" style="margin-bottom:16px">' + items.map(function (a) {
+    return '<div class="fig"><div class="fv' + (a[2] ? ' clock' : '') + '"' + (a[3] ? ' id="' + a[3] + '"' : '') + '>' + a[0] + '</div><div class="fk">' + esc(a[1]) + '</div></div>';
+  }).join('') + '</div>'; }
+  function node(ic, label, val, hot) { return '<div class="node' + (hot || '') + '"><div class="dot">' + ic + '</div><div class="nl">' + esc(label) + '</div><div class="nv">' + val + '</div></div>'; }
   function flowHTML() {
     var hot = cold.breach ? ' hot' : '';
-    return '<div class="flow">' +
-      node('PLT', 'Plant', '82% OEE', '') +
-      '<div class="link"></div>' +
-      node('DST', 'Distribution', '<span id="fl-cold">' + coldNow() + '&deg;C</span>', hot) +
-      '<div class="link' + hot + '"></div>' +
-      node('RX', 'Pharmacy', '<span id="fl-sig">' + demand.length + '</span> signals', '') +
-      '<div class="link"></div>' +
-      node('PT', 'Patients', '1.8M reached', '') +
-      '</div>';
+    return '<div class="flow">' + node('API', 'Suppliers', suppliers.filter(function (s) { return s.status === 'Qualified'; }).length + '/' + suppliers.length + ' qualified', '') +
+      '<div class="link"></div>' + node('PLT', 'Plant', '82% OEE', '') +
+      '<div class="link"></div>' + node('SER', 'Serialise', '<span id="fl-ser">' + serialPct().toFixed(1) + '</span>%', '') +
+      '<div class="link' + hot + '"></div>' + node('DST', 'Distribution', '<span id="fl-cold">' + coldNow() + '&deg;C</span>', hot) +
+      '<div class="link"></div>' + node('RX', 'Pharmacy', '<span id="fl-sig">' + demand.length + '</span> signals', '') +
+      '<div class="link"></div>' + node('PT', 'Patients', '1.8M reached', '') + '</div>';
   }
-  function node(ic, label, val, hot) {
-    return '<div class="node' + (hot || '') + '"><div class="dot">' + ic + '</div><div class="nl">' + esc(label) + '</div><div class="nv">' + val + '</div></div>';
-  }
-
   function feedHTML(limit) {
-    var rows = demand.slice(-( limit || 8)).reverse();
+    var rows = demand.slice(-(limit || 8)).reverse();
     return '<div class="feed" id="no-feed">' + (rows.length ? rows.map(function (d) {
       return '<div class="ev' + (d.fresh ? ' fresh' : '') + '"><span class="tm">' + UI.timeOf(d.ts) + '</span>' +
         '<div style="flex:1"><div style="font-weight:600;font-size:13px">' + esc(d.name) + ' &middot; ' + d.qty + ' pack' + (d.qty > 1 ? 's' : '') + '</div>' +
@@ -137,7 +129,6 @@
         '<span class="chip iris">reallocate</span></div>';
     }).join('') : '<div class="sub">Quiet. Dispense a Nexagen product in Cura and it lands here live.</div>') + '</div>';
   }
-
   function coldCardHTML() {
     var bars = cold.series.slice(-14).map(function (t) { return '<i class="' + (t > 8 || t < 2 ? 'hot' : '') + '" style="height:' + Math.max(8, Math.min(100, (t / 12) * 100)) + '%"></i>'; }).join('');
     return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
@@ -146,6 +137,19 @@
       '<div class="spark" id="no-coldspark">' + bars + '</div>' +
       '<div style="display:flex;justify-content:space-between;margin-top:6px"><span class="band">2 to 8&deg;C band</span><span class="band mono" id="no-coldnow">' + coldNow() + '&deg;C</span></div></div>';
   }
+  function railChips(m) {
+    var r = m.rails || {};
+    return '<span class="rails">' +
+      '<span class="rail exch ' + (r.exchange ? 'on' : '') + '">EXCH</span>' +
+      '<span class="rail eesg ' + ((r.eesg && r.eesg.length) ? 'on' : '') + '">EESG</span>' +
+      '<span class="rail gic ' + (r.gic ? 'on' : '') + '">GIC</span></span>';
+  }
+
+  /* ================= THE ELEMENT LIBRARY =================
+     Each element declares its three-rail contract: which exchange events it reads
+     and writes, which EESG metrics it emits, and whether its verified outcomes can
+     publish to the GIC. The EESG and Impact views are generated from these
+     declarations, so turning a module on wires it to EESG and GIC automatically. */
 
   function decisions() {
     var d = [];
@@ -153,6 +157,7 @@
     var last = demand[demand.length - 1];
     if (last && !acked['spike']) d.push({ sev: 'warn', t: 'Demand rising, ' + last.region, s: 'live dispensing is pulling stock, reallocate to cover it', act: 'reallocate', label: 'Reallocate 800 units' });
     if (!acked['eu']) d.push({ sev: 'warn', t: 'EU variation due in 46 days', s: 'two documents still missing on CardiNex-10', act: 'eu', label: 'Open filing' });
+    if (suppliers.some(function (s) { return s.status === 'At risk'; }) && !acked['sup']) d.push({ sev: 'warn', t: 'Supplier at risk, DhakaPack Ltd', s: 'packaging score 58, qualify an alternate', act: 'sup', label: 'Qualify alternate' });
     if (held['LOT']) d.push({ sev: 'ok', t: 'Lot held, ' + cold.product, s: 'quarantined and customer notified, QP review open', act: null });
     return d;
   }
@@ -161,224 +166,450 @@
       return '<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--hairline)">' +
         '<span class="sev ' + x.sev + '" style="margin-top:6px"></span>' +
         '<div style="flex:1"><div style="font-size:13px;font-weight:600">' + esc(x.t) + '</div><div class="sub2">' + esc(x.s) + '</div></div>' +
-        (x.act ? '<button class="btn btn-ghost btn-sm" data-act="' + x.act + '">' + esc(x.label) + '</button>' : '<span class="chip verified">done</span>') +
-        '</div>';
+        (x.act ? '<button class="btn btn-ghost btn-sm" data-act="' + x.act + '">' + esc(x.label) + '</button>' : '<span class="chip verified">done</span>') + '</div>';
     }).join('');
   }
 
-  function kpiRow(items) {
-    return '<div class="figs" style="margin-bottom:16px">' + items.map(function (a) {
-      return '<div class="fig"><div class="fv' + (a[2] ? ' clock' : '') + '"' + (a[3] ? ' id="' + a[3] + '"' : '') + '>' + a[0] + '</div><div class="fk">' + esc(a[1]) + '</div></div>';
+  var MODULES = [
+    { key: 'command', label: 'Command', ic: 'CM', group: 'Operate', core: true,
+      desc: 'The operating surface across every enabled module.',
+      rails: { exchange: ['DEMAND_SIGNAL', 'COLD_CHAIN_ALERT'], eesg: [], gic: false },
+      agents: ['Supply', 'Quality', 'Regulatory', 'Finance'],
+      render: function () {
+        var t = totals();
+        return head('Command', 'The operating surface. Live demand, the cold chain, serialisation, and the calls that cannot wait.') +
+          kpiRow([[t.units, 'packs pulled, live', false, 'k-units'], [money(t.value, '$'), 'ex-factory value', false, 'k-value'], [clockText(), 'projected stockout', true, 'no-clock'], [openDevs().length, 'open deviations', false, 'k-dev']]) +
+          flowHTML() +
+          '<div class="split" style="margin-top:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:6px">Decisions waiting</div><div id="no-dec">' + decList() + '</div></div>' +
+          '<div style="display:flex;flex-direction:column;gap:16px">' + coldCardHTML() +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Live demand</div>' + feedHTML(5) + '</div></div></div>' +
+          prov('reads dispensing, cold-chain and serialisation events from the exchange; the operator acts, the system watches');
+      } },
+
+    { key: 'sop', label: 'Planning & S&OP', ic: 'SO', group: 'Operate',
+      desc: 'Demand forecast reconciled against plant capacity, one number for commercial and operations.',
+      rails: { exchange: ['DEMAND_SIGNAL'], eesg: [{ pillar: 'Economic', front: 'Affordability and financial protection', measure: 'Forecast accuracy, 3-month', value: '91%', unit: '', status: 'Claimed' }], gic: false },
+      agents: ['Demand', 'Operations', 'Finance'],
+      render: function () {
+        var t = totals(), cap = Math.round(1200 * scale()), fc = Math.round(cap * 0.86);
+        return head('Planning & S&OP', 'One reconciled plan. Live demand feeds the forecast; capacity gates it.') +
+          kpiRow([[fc, 'forecast, packs/day', false], [cap, 'capacity, packs/day', false], ['91%', 'forecast accuracy', false], ['72%', 'capacity utilisation', false]]) +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Demand to capacity</div>' +
+          '<div class="sub2">Forecast vs capacity, CardiNex-10</div><div class="progress"><div class="fill" style="width:' + Math.min(100, fc / cap * 100) + '%"></div></div>' +
+          '<div class="sub" style="font-size:13px;margin-top:12px">The forecast is built from the same live dispensing the rest of Nexus runs on, not a separate planning spreadsheet, so S&OP and operations never diverge. Current pull of ' + t.units + ' packs is tracking the forecast.</div></div>' +
+          prov('demand forecast is derived from exchange dispensing, reconciled to plant capacity');
+      } },
+
+    { key: 'supply', label: 'Supply chain', ic: 'SC', group: 'Operate',
+      desc: 'Live demand, cover, and the cold chain behind it.',
+      rails: { exchange: ['DEMAND_SIGNAL', 'COLD_CHAIN_ALERT'], eesg: [{ pillar: 'Governance', front: 'Supply integrity and pharmacovigilance', measure: 'Cold-chain adherence', valueFn: function () { return cold.breach ? '96.1%' : '99.4%'; }, statusFn: function () { return cold.breach ? 'Inconsistent' : 'Verified'; } }], gic: true },
+      agents: ['Supply', 'Logistics', 'Quality'],
+      render: function () {
+        var t = totals();
+        return head('Supply chain', 'Demand pulled from real dispensing, the cover it burns, and the exceptions behind it.') +
+          kpiRow([[t.units, 'packs pulled', false, 'k-units'], [clockText(), 'cover remaining', true, 'no-clock'], [suppliers.filter(function (s) { return s.status !== 'Qualified'; }).length, 'suppliers at risk', false], ['800', 'units to reallocate', false]]) +
+          flowHTML() +
+          '<div class="split" style="margin-top:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Live demand signals</div>' + feedHTML(8) + '</div><div>' + coldCardHTML() + '</div></div>' +
+          prov('live dispensing replaces sampled quarterly data; the stockout clock is real');
+      } },
+
+    { key: 'procurement', label: 'Procurement', ic: 'PR', group: 'Operate',
+      desc: 'Supplier qualification and inbound material risk, API to packaging.',
+      rails: { exchange: [], eesg: [{ pillar: 'Governance', front: 'Supply integrity and pharmacovigilance', measure: 'Qualified suppliers', valueFn: function () { return Math.round(suppliers.filter(function (s) { return s.status === 'Qualified'; }).length / suppliers.length * 100) + '%'; }, statusFn: function () { return suppliers.some(function (s) { return s.status === 'At risk'; }) ? 'Inconsistent' : 'Verified'; } }], gic: false },
+      agents: ['Procurement', 'Quality', 'Regulatory'],
+      render: function () {
+        return head('Procurement', 'Supplier qualification and inbound material risk.') +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Supplier</th><th>Material</th><th class="num">Score</th><th>Status</th></tr></thead><tbody>' +
+          suppliers.map(function (s) { var c = s.status === 'Qualified' ? 'verified' : s.status === 'Review' ? 'claimed' : 'inconsistent';
+            return '<tr><td class="nm">' + esc(s.name) + '</td><td>' + esc(s.material) + '</td><td class="num">' + s.score + '</td><td><span class="chip ' + c + '">' + esc(s.status) + '</span></td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('supplier qualification is a live obligation; an at-risk supplier raises a decision in Command');
+      } },
+
+    { key: 'manufacturing', label: 'Manufacturing', ic: 'MF', group: 'Operate',
+      desc: 'Plant lines, OEE and batch execution, with deviations feeding Quality.',
+      rails: { exchange: [], eesg: [
+        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Right first time', value: '99.1%', unit: '', status: 'Verified' },
+        { pillar: 'Environment', front: 'Environmental stewardship', measure: 'Energy per 1k packs', value: '38 kWh', unit: '', status: 'Claimed' }
+      ], gic: true },
+      agents: ['Operations', 'Quality', 'Maintenance'],
+      render: function () {
+        return head('Manufacturing', 'Plant performance and batch execution at the complex. Batches progress live; a deviation feeds Quality.') +
+          kpiRow([['82%', 'OEE', false], [batches.filter(function (b) { return b.status === 'Running'; }).length, 'batches in build', false], ['99.1%', 'right first time', false], [openDevs().length, 'deviations open', false, 'k-dev']]) +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Line</th><th>Product</th><th>Batch</th><th class="num">OEE</th><th>Progress</th><th>Status</th></tr></thead><tbody id="no-batch">' + batchRows() + '</tbody></table></div>' +
+          prov('every batch carries provenance from raw material to release; a deviation raises automatically in Quality');
+      } },
+
+    { key: 'serialization', label: 'Serialisation', ic: 'SR', group: 'Operate',
+      desc: 'Unit-level track and trace to the last mile. The anti-counterfeit backbone.',
+      rails: { exchange: [], eesg: [{ pillar: 'Governance', front: 'Supply integrity and pharmacovigilance', measure: 'Serialised to last mile', valueFn: function () { return serialPct().toFixed(1) + '%'; }, statusFn: function () { return serialPct() >= 98 ? 'Verified' : 'Claimed'; } }], gic: true },
+      agents: ['Serialisation', 'Supply', 'Regulatory'],
+      render: function () {
+        return head('Serialisation & track-and-trace', 'Every pack a unique identity, scanned from release to the last mile.') +
+          kpiRow([['<span id="k-serpct">' + serialPct().toFixed(1) + '</span>%', 'serialised to last mile', false], ['<span id="k-sern">' + scans.serialized.toLocaleString('en-US') + '</span>', 'packs serialised', false], [scans.blocked, 'counterfeit scans blocked', false, 'k-block'], ['DSCSA + EU FMD', 'standards', false]]) +
+          '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-family:var(--font-brand);font-weight:700">Live scan stream</div><span class="chip verified">aggregated to the exchange</span></div>' +
+          '<div class="feed scanfeed" id="no-scan">' + scanRows() + '</div></div>' +
+          prov('serialisation is the verified supply-integrity measure that publishes to the Commons');
+      } },
+
+    { key: 'quality', label: 'Quality', ic: 'QA', group: 'Assure',
+      desc: 'Deviations, CAPA and batch disposition. The spine of a pharma company.',
+      rails: { exchange: ['COLD_CHAIN_ALERT'], eesg: [
+        { pillar: 'Social', front: 'Care quality and safety', measure: 'Batch release conformance', value: '98.7%', unit: '', status: 'Verified' },
+        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Deviations closed in SLA', valueFn: function () { return (deviations.length ? Math.round(deviations.filter(function (d) { return d.status === 'Closed'; }).length / deviations.length * 100) : 100) + '%'; }, statusFn: function () { return openDevs().some(function (d) { return d.type === 'Cold chain'; }) ? 'Inconsistent' : 'Claimed'; } }
+      ], gic: true },
+      agents: ['Quality', 'Operations', 'Regulatory'],
+      render: function () {
+        return head('Quality', 'Deviations, CAPA and the holds that gate release. A cold-chain breach in Relay lands here as a deviation automatically.') +
+          kpiRow([[openDevs().length, 'open deviations', false, 'k-dev'], [deviations.filter(function (d) { return d.status === 'CAPA'; }).length, 'in CAPA', false], ['98.7%', 'release conformance', false], [batches.filter(function (b) { return b.status === 'Hold'; }).length, 'batches on hold', false]]) +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Deviations</div><div id="no-dev">' + devRows() + '</div></div>' +
+          '<div class="qt-wrap" style="margin-top:16px"><table class="qt"><thead><tr><th>Batch</th><th>Product</th><th>Disposition</th><th>Note</th></tr></thead><tbody>' + dispoRows() + '</tbody></table></div>' +
+          prov('a cold-chain breach raised in Relay places the affected lot on hold here automatically');
+      } },
+
+    { key: 'safety', label: 'Pharmacovigilance', ic: 'PV', group: 'Assure',
+      desc: 'Adverse-event signals on a real dispensing denominator.',
+      rails: { exchange: ['RX_DISPENSED'], eesg: [{ pillar: 'Social', front: 'Health outcomes', measure: 'Signal response time', value: '6 days', unit: '', status: 'Claimed' }], gic: true },
+      agents: ['Pharmacovigilance', 'Medical', 'Regulatory'],
+      render: function () {
+        return head('Pharmacovigilance', 'Adverse-event signals on a real dispensing denominator, not an estimate.') +
+          kpiRow([['4', 'clustered AEs, 90d', false], ['1', 'signal under evaluation', false], ['CardiNex-10', 'product', false], ['oedema', 'MedDRA term', false]]) +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">Four peripheral oedema reports on CardiNex-10 in the 65+ group in 90 days cross the signal threshold. Because dispensing is on the exchange the denominator is real, so the rate is a measurement, not a guess. A qualified person decides whether to escalate to the regulator.</div></div>' +
+          prov('a real dispensing denominator turns a cluster of reports into a measurable rate');
+      } },
+
+    { key: 'regulatory', label: 'Regulatory', ic: 'RG', group: 'Assure',
+      desc: 'Registrations by market and submissions in flight.',
+      rails: { exchange: [], eesg: [{ pillar: 'Governance', front: 'Supply integrity and pharmacovigilance', measure: 'Markets in good standing', value: '60 of 62', unit: '', status: 'Verified' }], gic: false },
+      agents: ['Regulatory', 'Quality'],
+      render: function () {
+        return head('Regulatory', 'Registrations by market and the submissions in flight.') +
+          '<div class="qt-wrap"><table class="qt"><thead><tr><th>Market</th><th>Product</th><th>Status</th><th>Next action</th></tr></thead><tbody>' +
+          [['US FDA', 'CardiNex-10', 'Approved', 'annual report due'], ['EU (AGES)', 'CardiNex-10', 'Variation', 'due 46d, 2 docs missing'], ['TGA', 'OncoNex-100', 'Approved', 'none'], ['WHO PQ', 'CardiNex-10', 'In review', 'respond to queries']].map(function (r) {
+            var c = r[2] === 'Approved' ? 'verified' : r[2] === 'Variation' ? 'inconsistent' : 'claimed';
+            return '<tr><td class="nm">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td><span class="chip ' + c + '">' + esc(r[2]) + '</span></td><td class="sub2">' + esc(r[3]) + '</td></tr>'; }).join('') +
+          '</tbody></table></div>' + prov('registrations and submissions are tracked as live obligations, not a static file');
+      } },
+
+    { key: 'demand', label: 'Demand', ic: 'DM', group: 'Commercial',
+      desc: 'Live demand by product and region from every connected pharmacy.',
+      rails: { exchange: ['DEMAND_SIGNAL', 'RX_DISPENSED'], eesg: [{ pillar: 'Social', front: 'Access and coverage', measure: 'Patients reached, quarter', value: '1.8M', unit: '', status: 'Verified' }], gic: true },
+      agents: ['Demand', 'Commercial'],
+      render: function () {
+        var t = totals();
+        return head('Demand', 'Live demand by product and region, summed from every connected pharmacy.') +
+          kpiRow([[t.units, 'packs pulled, live', false, 'k-units'], [money(t.value, '$'), 'ex-factory value', false, 'k-value'], [demand.length, 'signals, session', false], [REGIONS.length, 'regions active', false]]) +
+          '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Signal stream</div>' + feedHTML(12) + '</div>' +
+          prov('demand is the sum of real dispensing events, not a forecast model');
+      } },
+
+    { key: 'finance', label: 'Finance', ic: 'FN', group: 'Commercial',
+      desc: 'Revenue, cost and working-capital pressure, on the operational ledger.',
+      rails: { exchange: [], eesg: [{ pillar: 'Economic', front: 'Affordability and financial protection', measure: 'Cost per pack, CardiNex-10', value: '$31', unit: '', status: 'Verified' }], gic: false },
+      agents: ['Finance', 'Operations'],
+      render: function () {
+        return head('Finance', 'Revenue, cost and the working-capital pressure behind operations.') +
+          kpiRow([[money(Math.round(400000000 * scale()), '$'), 'revenue, year', false], [money(Math.round(320000 * scale()), '$'), 'receivables overdue', false], ['62', 'export markets', false], ['18%', 'EBITDA margin', false]]) +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">A receivable of ' + money(Math.round(320000 * scale()), '$') + ' is 45 days overdue from a Middle East distributor, the main working-capital pressure this quarter. BFRS and IFRS reporting reconcile to the same operational events the rest of Nexus runs on, so finance is not a separate version of the truth.</div></div>' +
+          prov('finance reads the same events as operations; there is one ledger of reality');
+      } },
+
+    { key: 'environment', label: 'Environment', ic: 'EN', group: 'Impact',
+      desc: 'Carbon, water, effluent and waste. The pharma-specific environmental story.',
+      rails: { exchange: [], eesg: [
+        { pillar: 'Environment', front: 'Environmental stewardship', measure: 'Carbon intensity vs target', valueFn: function () { return '+' + env.carbon + '%'; }, statusFn: function () { return env.carbon > 5 ? 'Inconsistent' : 'Verified'; } },
+        { pillar: 'Environment', front: 'Environmental stewardship', measure: 'Process water recycled', valueFn: function () { return env.water + '%'; }, status: 'Claimed' },
+        { pillar: 'Environment', front: 'Environmental stewardship', measure: 'API effluent within consent', value: 'within', unit: '', status: 'Verified' },
+        { pillar: 'Environment', front: 'Environmental stewardship', measure: 'Waste diverted from landfill', valueFn: function () { return env.waste + '%'; }, status: 'Claimed' }
+      ], gic: true },
+      agents: ['Environment', 'Operations', 'Finance'],
+      render: function () {
+        return head('Environment', 'The pharma-specific environmental position: carbon, water, API effluent and waste, measured from operations.') +
+          kpiRow([['+' + env.carbon + '%', 'carbon vs target', false, 'k-carbon'], [env.water + '%', 'water recycled', false], ['within', 'API effluent consent', false], [env.waste + '%', 'waste diverted', false]]) +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">Carbon intensity is ' + env.carbon + '% above target, the one red line, and it blocks the carbon-credit line on the Commons until it is verified down. API effluent is within consent, the measure most manufacturers cannot show. Each metric is an EESG emitter read straight from operations, no separate data collection.</div></div>' +
+          prov('environment reads the operational record; effluent and waste are first-class, not just carbon');
+      } },
+
+    { key: 'workforce', label: 'People & HSE', ic: 'HS', group: 'Impact',
+      desc: 'GMP training currency and workplace safety.',
+      rails: { exchange: [], eesg: [
+        { pillar: 'Social', front: 'Care quality and safety', measure: 'GMP training current', value: '94%', unit: '', status: 'Verified' },
+        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Lost-time injury rate', value: '0.3', unit: '', status: 'Verified' }
+      ], gic: false },
+      agents: ['People', 'HSE', 'Quality'],
+      render: function () {
+        return head('People & HSE', 'GMP training currency and workplace safety, the qualification behind every batch.') +
+          kpiRow([['94%', 'GMP training current', false], ['12', 'qualifications overdue', false], ['0.3', 'lost-time injury rate', false], ['0', 'open HSE incidents', false]]) +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">A released batch is only as valid as the training behind it. Training currency and HSE are EESG emitters here, so the social and governance picture reads from the same record that gates production.</div></div>' +
+          prov('training and safety are EESG emitters tied to the record that gates release');
+      } },
+
+    { key: 'eesg', label: 'EESG position', ic: 'ES', group: 'Impact', core: true,
+      desc: 'The framework position, generated from every enabled module.',
+      rails: { exchange: [], eesg: [], gic: false },
+      agents: ['Sustainability', 'Quality', 'Finance'],
+      render: function () {
+        return head('EESG position', 'Generated from every enabled module. Turn a module on and its metrics appear here. This is the framework rail, live.') +
+          '<div class="pitch"><div class="k">The EESG rail</div><div class="l">Not a separate report. Every module emits its metrics against the framework, and this view rolls them up.</div></div>' +
+          eesgGridHTML() + prov('each metric names the module it came from; nothing here is re-keyed by hand');
+      } },
+
+    { key: 'impact', label: 'Impact & GIC', ic: 'IM', group: 'Impact', core: true,
+      desc: 'Verified outcomes published to the Commons for capital.',
+      rails: { exchange: ['GIC_PUBLISHED'], eesg: [], gic: true },
+      agents: ['Sustainability', 'Finance', 'Capital'],
+      render: function () {
+        var verified = collectEESG().filter(function (m) { return m.status === 'Verified' && m.gic; });
+        var carbon = collectEESG().filter(function (m) { return m.pillar === 'Environment' && m.measure.indexOf('Carbon') === 0; })[0];
+        var carbonVerified = carbon && carbon.status === 'Verified';
+        return head('Impact & GIC', cur.name + '\'s verified outcomes and their publication to the Commons, where they raise capital.') +
+          '<div class="impact"><h3>Publishable verified outcomes</h3><div class="rows">' +
+          (verified.length ? verified.map(function (m) { return '<div class="row"><span class="m">' + esc(m.front) + ' &middot; ' + esc(m.measure) + '<br><span class="src" style="font-family:var(--font-mono);font-size:10px;color:var(--faint)">from ' + esc(m.from) + '</span></span><span style="display:flex;gap:10px;align-items:center"><span class="v">' + esc(m.value) + '</span>' + UI.statusChip('Verified') + '</span></div>'; }).join('') : '<div class="sub">No verified outcomes in the enabled set yet.</div>') +
+          '</div><p class="provenance">collected from enabled modules; only Verified outcomes can publish</p>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-primary" data-gic-publish>Publish verified record to GIC</button>' +
+          '<a class="btn btn-ghost" href="' + X.GIC_URL + '" target="_blank" rel="noopener">Request capital on the Commons</a></div></div>' +
+          '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Capital on the Commons</div>' +
+          '<div class="figs"><div class="fig"><div class="fv">$1.2M</div><div class="fk">requested</div></div><div class="fig"><div class="fv">$0.4M</div><div class="fk">committed</div></div><div class="fig"><div class="fv">' + verified.length + '</div><div class="fk">verified outcomes</div></div></div>' +
+          '<div class="sub" style="font-size:13px;margin-top:10px">Expansion capital is raised against verified access and supply-integrity outcomes. The carbon-credit line is ' + (carbonVerified ? 'open.' : 'blocked until carbon intensity is verified down to target.') + ' Nothing unverified is posted.</div></div>' +
+          prov('the GIC rail; verified EESG outcomes from any enabled module can fund here');
+      } },
+
+    { key: 'library', label: 'Module library', ic: 'LB', group: 'Impact', core: true,
+      desc: 'The full element catalogue. Turn modules on per customer.',
+      rails: { exchange: [], eesg: [], gic: false },
+      agents: ['Platform'],
+      render: function () {
+        return head('Module library', 'Every element Nexus offers. Switch modules on for this customer. Each clips to the exchange, EESG and GIC by one contract.') +
+          '<div class="pitch"><div class="k">Configurable by customer</div><div class="l">' + esc(cur.name) + ' (' + cur.sizeClass + ') runs ' + enabledMods().length + ' of ' + MODULES.length + ' modules. Toggle one and watch it join the nav and the EESG rail.</div></div>' +
+          '<div class="qt-wrap"><table class="lib"><tbody>' + libRows() + '</tbody></table></div>' +
+          prov('the enabled set is configuration, not code; every module is the same three-rail contract');
+      } }
+  ];
+
+  function moduleByKey(k) { for (var i = 0; i < MODULES.length; i++) if (MODULES[i].key === k) return MODULES[i]; return null; }
+
+  /* ---------- per-tenant manifest + live overrides ---------- */
+  var MANIFEST = {
+    'ORG-PHARMA-SML': ['command', 'supply', 'manufacturing', 'quality', 'demand', 'finance', 'environment', 'eesg', 'impact', 'library'],
+    'ORG-PHARMA-MID': ['command', 'sop', 'supply', 'procurement', 'manufacturing', 'serialization', 'quality', 'safety', 'regulatory', 'demand', 'finance', 'environment', 'workforce', 'eesg', 'impact', 'library'],
+    'ORG-NEXAGEN': 'all'
+  };
+  var overrides = {};
+  function baseEnabled(orgId) { var m = MANIFEST[orgId] || 'all'; return m === 'all' ? MODULES.map(function (x) { return x.key; }) : m.slice(); }
+  function isOn(key) { var o = overrides[cur.id] || {}; if (key in o) return o[key]; return baseEnabled(cur.id).indexOf(key) >= 0; }
+  function enabledMods() { return MODULES.filter(function (m) { return isOn(m.key); }); }
+  function navModules() { return enabledMods().map(function (m) { return { key: m.key, label: m.label, ic: m.ic, group: m.group }; }); }
+
+  /* ---------- EESG rollup, generated from enabled modules ---------- */
+  function collectEESG() {
+    var out = [];
+    enabledMods().forEach(function (m) {
+      (m.rails.eesg || []).forEach(function (met) {
+        out.push({ pillar: met.pillar, front: met.front, measure: met.measure,
+          value: met.valueFn ? met.valueFn() : met.value, status: met.statusFn ? met.statusFn() : met.status,
+          from: m.label, gic: !!m.rails.gic });
+      });
+    });
+    return out;
+  }
+  function eesgGridHTML() {
+    var mets = collectEESG(), pillars = X.FRAMEWORK.pillars;
+    return '<div class="eesg">' + pillars.map(function (p) {
+      var rows = mets.filter(function (m) { return m.pillar === p; });
+      return '<div class="pillar"><h4>' + esc(p) + '</h4>' + (rows.length ? rows.map(function (m) {
+        return '<div class="met"><div class="mv"><span class="mn">' + esc(m.measure) + '</span>' + UI.statusChip(m.status) + '</div>' +
+          '<div class="mv"><span class="mnum">' + esc(m.value) + '</span><span class="src">' + esc(m.from) + '</span></div></div>';
+      }).join('') : '<div class="empty">No enabled module emits here.</div>') + '</div>';
     }).join('') + '</div>';
   }
 
-  function moduleBody() {
-    var t = totals();
-    if (mod === 'command') {
-      return head('Command', 'The operating surface. Live demand from the field, the cold chain, and the calls that cannot wait.') +
-        kpiRow([
-          [t.units, 'packs pulled, live', false, 'k-units'],
-          [money(t.value, '$'), 'ex-factory value', false, 'k-value'],
-          [clockText(), 'projected stockout', true, 'no-clock'],
-          ['A-', 'health impact score', false]
-        ]) +
-        flowHTML() +
-        '<div class="split" style="margin-top:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:6px">Decisions waiting</div><div id="no-dec">' + decList() + '</div></div>' +
-        '<div style="display:flex;flex-direction:column;gap:16px">' + coldCardHTML() +
-        '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Live demand</div>' + feedHTML(5) + '</div></div></div>' +
-        prov('reads dispensing and cold-chain events from the exchange; the operator acts, the system watches');
-    }
-    if (mod === 'supply') {
-      return head('Supply chain', 'Demand pulled from real dispensing, the cover it burns, and the exceptions behind it.') +
-        kpiRow([[t.units, 'packs pulled', false, 'k-units'], [clockText(), 'cover remaining', true, 'no-clock'], ['2', 'suppliers at risk', false], ['800', 'units to reallocate', false]]) +
-        flowHTML() +
-        '<div class="split" style="margin-top:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Live demand signals</div>' + feedHTML(8) + '</div>' +
-        '<div>' + coldCardHTML() + '</div></div>' +
-        prov('live dispensing replaces sampled quarterly data; the stockout clock is real');
-    }
-    if (mod === 'demand') {
-      return head('Demand', 'Live demand by product and region, summed from every connected pharmacy.') +
-        kpiRow([[t.units, 'packs pulled, live', false, 'k-units'], [money(t.value, '$'), 'ex-factory value', false, 'k-value'], [demand.length, 'signals, session', false], [REGIONS.length, 'regions active', false]]) +
-        '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Signal stream</div>' + feedHTML(12) + '</div>' +
-        prov('demand is the sum of real dispensing events, not a forecast model');
-    }
-    if (mod === 'manufacturing') {
-      return head('Manufacturing', 'Plant performance and environmental monitoring at the Nexagen complex.') +
-        kpiRow([['82%', 'OEE', false], ['3', 'batches in build', false], ['99.1%', 'right first time', false], ['0', 'GMP deviations open', false]]) +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Line</th><th>Product</th><th>Batch</th><th class="num">OEE</th><th>Status</th></tr></thead><tbody>' +
-        [['Line 1', 'CardiNex-10', 'BATCH-CARD-0342', '86%', 'Running'], ['Line 2', 'OncoNex-100', 'BATCH-ONCO-0101', '78%', 'Running'], ['Line 3', 'Metformin 500', 'BATCH-MET-0590', '81%', 'Changeover']].map(function (r) {
-          return '<tr><td class="nm">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="mono">' + esc(r[2]) + '</td><td class="num">' + esc(r[3]) + '</td><td>' + (r[4] === 'Changeover' ? '<span class="chip claimed">changeover</span>' : '<span class="chip verified">running</span>') + '</td></tr>';
-        }).join('') + '</tbody></table></div>' + prov('every batch carries provenance from raw material to release');
-    }
-    if (mod === 'quality') {
-      var oncoHold = (cold.breach || held['LOT']) ? [['BATCH-ONCO-0097', 'OncoNex-100', 'On hold', 'cold-chain breach, QP review open']] : [];
-      var rows = oncoHold.concat([['BATCH-CARD-0341', 'CardiNex-10', 'Released', 'all specs met'], ['BATCH-CARD-0342', 'CardiNex-10', 'In test', 'awaiting QC']]);
-      return head('Quality', 'Batch disposition, deviations and the holds that gate release.') +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Batch</th><th>Product</th><th>Disposition</th><th>Note</th></tr></thead><tbody>' +
-        rows.map(function (r) { var c = r[2] === 'On hold' ? 'inconsistent' : r[2] === 'Released' ? 'verified' : 'claimed';
-          return '<tr><td class="mono">' + esc(r[0]) + '</td><td class="nm">' + esc(r[1]) + '</td><td><span class="chip ' + c + '">' + esc(r[2]) + '</span></td><td class="sub2">' + esc(r[3]) + '</td></tr>';
-        }).join('') + '</tbody></table></div>' + prov('a cold-chain breach raised in Relay places the affected lot on hold here automatically');
-    }
-    if (mod === 'safety') {
-      return head('Safety intelligence', 'Pharmacovigilance: adverse-event signals on a real dispensing denominator.') +
-        kpiRow([['4', 'clustered AEs, 90d', false], ['1', 'signal under evaluation', false], ['CardiNex-10', 'product', false], ['oedema', 'MedDRA term', false]]) +
-        '<div class="card shadow"><div class="sub" style="font-size:13px">Four peripheral oedema reports on CardiNex-10 in the 65+ group in 90 days cross the signal threshold. Because dispensing is on the exchange the denominator is real, so the rate is a measurement, not a guess. A qualified person decides whether to escalate to the regulator.</div></div>' +
-        prov('a real dispensing denominator turns a cluster of reports into a measurable rate');
-    }
-    if (mod === 'regulatory') {
-      return head('Regulatory', 'Registrations by market and the submissions in flight.') +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Market</th><th>Product</th><th>Status</th><th>Next action</th></tr></thead><tbody>' +
-        [['US FDA', 'CardiNex-10', 'Approved', 'annual report due'], ['EU (AGES)', 'CardiNex-10', 'Variation', 'due 46d, 2 docs missing'], ['TGA', 'OncoNex-100', 'Approved', 'none'], ['NAFDAC', 'CardiNex-10', 'In review', 'respond to queries']].map(function (r) {
-          var c = r[2] === 'Approved' ? 'verified' : r[2] === 'Variation' ? 'inconsistent' : 'claimed';
-          return '<tr><td class="nm">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td><span class="chip ' + c + '">' + esc(r[2]) + '</span></td><td class="sub2">' + esc(r[3]) + '</td></tr>';
-        }).join('') + '</tbody></table></div>' + prov('registrations and submissions are tracked as live obligations, not a static file');
-    }
-    if (mod === 'finance') {
-      return head('Finance', 'Revenue, cost and the working-capital pressure behind operations.') +
-        kpiRow([[money(Math.round(400000000 * scale()), '$'), 'revenue, year', false], [money(Math.round(320000 * scale()), '$'), 'receivables overdue', false], ['62', 'export markets', false], ['18%', 'EBITDA margin', false]]) +
-        '<div class="card shadow"><div class="sub" style="font-size:13px">A receivable of ' + money(Math.round(320000 * scale()), '$') + ' is 45 days overdue from a Middle East distributor, the main working-capital pressure this quarter. BFRS and IFRS reporting reconcile to the same operational events the rest of Nexus runs on, so finance is not a separate version of the truth.</div></div>' +
-        prov('finance reads the same events as operations; there is one ledger of reality');
-    }
-    if (mod === 'sustainability') {
-      return head('Sustainability', 'The EESG position, measured from operations, not a separate report.') +
-        kpiRow([['+12%', 'carbon vs target', false], ['98%', 'serialised to last mile', false], ['1.8M', 'patients reached', false], ['A', 'governance score', false]]) +
-        '<div class="card shadow"><div class="sub" style="font-size:13px">Carbon intensity is running 12% above the EESG target, the one red line this quarter, and the board is asking about carbon credits. Every Telos node carries EESG metadata, so this reads across modules rather than needing a separate data pull. It is the same data that becomes the verified outcome on the Commons.</div></div>' +
-        prov('EESG is architectural here; sustainability reads the operational record, it does not re-key it');
-    }
-    if (mod === 'impact') {
-      return head('Impact and GIC', 'Nexagen\'s contribution to the framework and its verified publication to the Commons, where it raises capital.') +
-        UI.impactPanel(cur, { measures: [
-          { front: 'Access and coverage', measure: 'Patients reached, quarter', value: '1.8M', status: 'Verified' },
-          { front: 'Supply integrity and pharmacovigilance', measure: 'Serialised to the last mile', value: '98%', status: 'Claimed' },
-          { front: 'Environment', measure: 'Carbon intensity vs target', value: '+12%', status: 'Inconsistent' }
-        ] }) +
-        '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Capital on the Commons</div>' +
-        '<div class="figs"><div class="fig"><div class="fv">$1.2M</div><div class="fk">requested</div></div><div class="fig"><div class="fv">$0.4M</div><div class="fk">committed</div></div><div class="fig"><div class="fv">2 of 3</div><div class="fk">outcomes verified</div></div></div>' +
-        '<div class="sub" style="font-size:13px;margin-top:10px">Nexagen is raising expansion capital against verified access and supply-integrity outcomes. A carbon credit line opens once the environment measure moves from Inconsistent to Verified. Nothing unverified is posted.</div></div>';
-    }
-    return '';
+  /* ---------- live rows ---------- */
+  function batchRows() {
+    return batches.map(function (b) {
+      var c = b.status === 'Hold' ? 'inconsistent' : b.status === 'Changeover' ? 'claimed' : 'verified';
+      var fillc = b.status === 'Hold' ? 'crit' : b.progress > 90 ? 'ok' : '';
+      return '<tr><td class="nm">' + esc(b.line) + '</td><td>' + esc(b.product) + '</td><td class="mono">' + esc(b.batch) + '</td><td class="num">' + b.oee + '%</td>' +
+        '<td style="min-width:120px"><div class="progress"><div class="fill ' + fillc + '" style="width:' + b.progress + '%"></div></div></td>' +
+        '<td><span class="chip ' + c + '">' + esc(b.status.toLowerCase()) + '</span></td></tr>';
+    }).join('');
+  }
+  function devRows() {
+    if (!deviations.length) return '<div class="sub">No open deviations.</div>';
+    return deviations.map(function (d) {
+      var c = d.status === 'Open' ? 'inconsistent' : d.status === 'CAPA' ? 'claimed' : 'verified';
+      return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--hairline)">' +
+        '<span class="mono" style="font-size:11px;color:var(--mid);flex:0 0 92px">' + esc(d.id) + '</span>' +
+        '<div style="flex:1"><div style="font-size:13px;font-weight:600">' + esc(d.product) + ' &middot; ' + esc(d.type) + '</div><div class="sub2">' + esc(d.note) + '</div></div>' +
+        '<span class="chip ' + c + '">' + esc(d.status) + '</span>' +
+        (d.status !== 'Closed' ? '<button class="btn btn-ghost btn-sm" data-dev="' + esc(d.id) + '">Advance</button>' : '') + '</div>';
+    }).join('');
+  }
+  function dispoRows() {
+    var rows = [];
+    if (cold.breach || held['LOT']) rows.push(['BATCH-ONCO-0097', 'OncoNex-100', 'On hold', 'cold-chain breach, QP review open']);
+    rows.push(['BATCH-CARD-0341', 'CardiNex-10', 'Released', 'all specs met']);
+    rows.push(['BATCH-CARD-0342', 'CardiNex-10', 'In test', 'awaiting QC']);
+    return rows.map(function (r) { var c = r[2] === 'On hold' ? 'inconsistent' : r[2] === 'Released' ? 'verified' : 'claimed';
+      return '<tr><td class="mono">' + esc(r[0]) + '</td><td class="nm">' + esc(r[1]) + '</td><td><span class="chip ' + c + '">' + esc(r[2]) + '</span></td><td class="sub2">' + esc(r[3]) + '</td></tr>'; }).join('');
+  }
+  function scanRows() {
+    if (!scans.feed.length) { for (var i = 0; i < 4; i++) seedScan(); }
+    return scans.feed.slice(-7).reverse().map(function (s) {
+      return '<div class="ev' + (s.fresh ? ' fresh' : '') + '"><span class="tm">' + UI.timeOf(s.ts) + '</span>' +
+        '<div style="flex:1"><div style="font-weight:600;font-size:13px">' + esc(s.sn) + '</div><div class="sub2">' + esc(s.product) + ' &middot; ' + esc(s.where) + '</div></div>' +
+        '<span class="chip ' + (s.ok ? 'verified' : 'inconsistent') + '">' + (s.ok ? 'authentic' : 'blocked') + '</span></div>';
+    }).join('');
+  }
+  function seedScan(fresh) {
+    var ok = Math.random() > 0.04;
+    scans.feed.push({ ts: Date.now(), sn: 'SN-' + rnd(10000, 99999) + '-' + rnd(100, 999), product: Math.random() < 0.7 ? 'CardiNex-10' : 'OncoNex-100', where: pick(REGIONS) + ' pharmacy', ok: ok, fresh: !!fresh });
+    if (scans.feed.length > 40) scans.feed = scans.feed.slice(-40);
+    if (!ok) scans.blocked++;
+  }
+  function libRows() {
+    var out = '', lastG = null;
+    MODULES.forEach(function (m) {
+      if (m.group !== lastG) { out += '<tr class="grp-row"><td colspan="4">' + esc(m.group) + '</td></tr>'; lastG = m.group; }
+      var on = isOn(m.key);
+      out += '<tr><td style="width:40px"><button class="toggle' + (on ? ' on' : '') + (m.core ? ' locked' : '') + '" data-toggle="' + esc(m.key) + '"' + (m.core ? ' disabled title="core module, always on"' : '') + '></button></td>' +
+        '<td><div class="nm">' + esc(m.label) + '</div><div class="ds">' + esc(m.desc) + '</div></td>' +
+        '<td>' + railChips(m) + '</td>' +
+        '<td class="sub2">' + (m.core ? 'core' : on ? 'enabled' : 'available') + '</td></tr>';
+    });
+    return out;
   }
 
-  /* ---------------- IRIS context and answers ---------------- */
-
+  /* ---------- IRIS: context + answers with agents and actions ---------- */
   function irisContext() {
-    var map = {
-      command: { label: 'Command', s: ['What needs me right now?', 'Why is the cold chain flagged?', 'How long until stockout?'] },
-      supply: { label: 'Supply chain', s: ['Where is demand concentrated?', 'What should I reallocate?'] },
-      demand: { label: 'Demand', s: ['Which product is moving?', 'Is this real or forecast?'] },
-      quality: { label: 'Quality', s: ['Why is the OncoNex lot on hold?'] },
-      safety: { label: 'Safety', s: ['Explain the CardiNex signal'] },
-      regulatory: { label: 'Regulatory', s: ['What is the EU filing risk?'] },
-      finance: { label: 'Finance', s: ['What is the working-capital pressure?'] },
-      sustainability: { label: 'Sustainability', s: ['Where is carbon over target?'] },
-      impact: { label: 'Impact', s: ['What can we raise capital against?', 'What blocks the carbon line?'] },
-      manufacturing: { label: 'Manufacturing', s: ['How are the lines running?'] }
+    var m = moduleByKey(mod) || {};
+    var sMap = {
+      command: ['What needs me right now?', 'Why is the cold chain flagged?', 'How long until stockout?'],
+      quality: ['Why is the OncoNex lot on hold?', 'What is still open?'],
+      manufacturing: ['How are the lines running?'],
+      serialization: ['How much is serialised?', 'Any counterfeit blocked?'],
+      environment: ['Where is carbon over target?', 'What blocks the carbon line?'],
+      eesg: ['Summarise our EESG position', 'What is not yet verified?'],
+      impact: ['What can we raise capital against?', 'What blocks the carbon line?'],
+      library: ['What should a small maker turn on?'],
+      demand: ['Which product is moving?'], supply: ['What should I reallocate?'],
+      safety: ['Explain the CardiNex signal'], regulatory: ['What is the EU filing risk?'],
+      finance: ['What is the working-capital pressure?'], procurement: ['Which supplier is at risk?'],
+      sop: ['Are we within capacity?'], workforce: ['Is training current?']
     };
-    var c = map[mod] || { label: '', s: [] };
-    return { label: c.label, suggestions: c.s };
+    return { label: m.label || '', suggestions: sMap[mod] || [] };
   }
-
-  function irisAnswer(q, ctx) {
-    var s = q.toLowerCase(), t = totals();
-    if (/cold|chain|temp|breach/.test(s)) {
-      return cold.breach
-        ? cold.product + ' on ' + cold.shipment + ' is reading ' + coldNow() + 'C, outside the 2 to 8 band. My read: hold the lot, notify the customer, open a QP review. I have flagged it in Command and Quality. A qualified person signs the hold.'
-        : 'The cold chain is in band at ' + coldNow() + 'C against a 2 to 8 window. No action needed. If Relay raises a breach it will surface here and place the affected lot on hold automatically.';
+  function irisAnswer(q) {
+    var s = q.toLowerCase(), t = totals(), m = moduleByKey(mod) || {}, agents = m.agents || ['Telos'];
+    function A(text, acts) { return { text: text, agents: agents, actions: acts || [] }; }
+    if (/cold|chain|temp|breach|hold/.test(s)) {
+      return A(cold.breach
+        ? cold.product + ' on ' + cold.shipment + ' is reading ' + coldNow() + 'C, outside the 2 to 8 band. It has already raised a deviation in Quality and placed the lot on hold. My read: confirm the hold, notify the customer, open the QP review. A qualified person signs it.'
+        : 'Cold chain is in band at ' + coldNow() + 'C against a 2 to 8 window. No action. If Relay raises a breach it lands here and in Quality as a deviation automatically.',
+        cold.breach ? [{ label: 'Hold the lot', reply: 'Lot held and quarantined. QP review opened. A licensed person signs disposition.' }, { label: 'Show the deviation', kind: 'evidence', q: 'What is still open?' }] : []);
     }
-    if (/stock|cover|out/.test(s)) return 'Cover runs to ' + clockText() + ' at the current pull of ' + t.units + ' packs. That clock moves with real dispensing, not a quarterly estimate. Reallocating 800 units from the slower region buys back about four days.';
-    if (/demand|moving|pull|region/.test(s)) { var last = demand[demand.length - 1]; return 'Live demand is ' + t.units + ' packs worth ' + money(t.value, '$') + ' ex-factory, summed from connected pharmacies. The most recent signal is ' + (last ? last.name + ' in ' + last.region : 'quiet') + '. This is measured dispensing, not a forecast.'; }
-    if (/eu|filing|regulat|variation/.test(s)) return 'The EU variation on CardiNex-10 is due in 46 days with two documents still missing. That is the slow risk this week. Close the two documents or the filing slips a cycle. I can list the gaps; a regulatory lead owns the submission.';
-    if (/safety|signal|oedema|adverse|pv/.test(s)) return 'Four peripheral oedema reports on CardiNex-10 in the 65+ group over 90 days cross the signal threshold. Because the denominator is real dispensing, the rate is trustworthy. My suggestion is to evaluate for escalation; a qualified person decides whether to notify the regulator.';
-    if (/finance|cash|receivable|working/.test(s)) return 'Working capital is the pressure, not profit. A ' + money(Math.round(320000 * scale()), '$') + ' receivable is 45 days overdue from a Middle East distributor. Finance reads the same events as operations, so this is one ledger, not a reconciliation.';
-    if (/carbon|sustain|eesg|environment/.test(s)) return 'Carbon intensity is 12% above the EESG target, the one red line. It reads from the operational record, no separate data pull. Moving it from Inconsistent to Verified is what opens the carbon credit line on the Commons.';
-    if (/capital|gic|commons|raise|fund/.test(s)) return 'You can raise against the two verified outcomes: access, 1.8M patients reached, and supply integrity at 98% serialised. $1.2M requested, $0.4M committed. The carbon line is blocked until the environment measure is verified. Nothing unverified is posted.';
-    if (/line|manufactur|oee|batch/.test(s)) return 'Three lines running, OEE 82% overall, right-first-time 99.1%, no open GMP deviations. Line 3 is in changeover to Metformin. Each batch carries provenance from raw material to release.';
-    return 'I read that from Nexagen\'s own records on the exchange. Ask me about demand, the cold chain, a batch, the EU filing, finance, carbon or the capital ask. I advise; a licensed person makes every clinical, quality and regulatory call.';
+    if (/stock|cover|out/.test(s)) return A('Cover runs to ' + clockText() + ' at the current pull of ' + t.units + ' packs. That clock moves with real dispensing. Reallocating 800 units buys back about four days.', [{ label: 'Reallocate 800 units', reply: '800 units reallocated. Cover clock extended. A planner confirms the move.' }, { label: 'See the math', kind: 'evidence', q: 'Which product is moving?' }]);
+    if (/serial|counterfeit|trace|track/.test(s)) return A(serialPct().toFixed(1) + '% of packs are serialised to the last mile, ' + scans.serialized.toLocaleString('en-US') + ' units, with ' + scans.blocked + ' counterfeit scans blocked this session. That figure is the verified supply-integrity outcome that publishes to the Commons.', [{ label: 'Open serialisation', kind: 'evidence', q: 'How much is serialised?' }]);
+    if (/quality|deviation|capa|release/.test(s)) return A(openDevs().length + ' deviations are open, ' + deviations.filter(function (d) { return d.status === 'CAPA'; }).length + ' in CAPA. ' + (openDevs().some(function (d) { return d.type === 'Cold chain'; }) ? 'The cold-chain one on ' + cold.product + ' gates release of the affected lot. ' : '') + 'Release conformance is 98.7%. A qualified person dispositions each batch.', [{ label: 'Advance a deviation', reply: 'Deviation advanced to the next stage. A QA lead signs the step.' }]);
+    if (/carbon|environment|effluent|water|waste/.test(s)) return A('Carbon intensity is ' + env.carbon + '% over target, the one red line, and it blocks the carbon-credit line on the Commons until verified down. API effluent is within consent and water recycling is at ' + env.water + '%. Each is an EESG emitter read from operations.', [{ label: 'Open Environment', kind: 'evidence', q: 'What blocks the carbon line?' }]);
+    if (/eesg|framework|position/.test(s)) { var mets = collectEESG(), ver = mets.filter(function (x) { return x.status === 'Verified'; }).length; return A('Across the ' + enabledMods().length + ' enabled modules, ' + mets.length + ' EESG metrics are emitting, ' + ver + ' Verified. The weak spots are carbon intensity and the serialisation claim. Turn on more modules and the position fills in; it is generated, not hand-written.', [{ label: 'Open EESG', kind: 'evidence', q: 'What is not yet verified?' }]); }
+    if (/capital|gic|commons|raise|fund/.test(s)) { var v = collectEESG().filter(function (x) { return x.status === 'Verified' && x.gic; }); return A('You can raise against ' + v.length + ' verified outcomes, led by access, 1.8M patients reached, and supply integrity. $1.2M requested, $0.4M committed. The carbon line is blocked until carbon is verified down. Nothing unverified posts.', [{ label: 'Publish to GIC', reply: 'Verified record staged for the Commons. A signatory approves the publication.' }, { label: 'See outcomes', kind: 'evidence', q: 'Summarise our EESG position' }]); }
+    if (/library|turn on|module|small|configure/.test(s)) return A('For a small generics maker I would turn on Command, Supply, Manufacturing, Quality, Demand, Finance and Environment, plus the EESG and GIC rails. That is the current ' + cur.name + ' set. Procurement, serialisation, S&OP, PV, regulatory and workforce come on as they scale. Same code, different manifest.', [{ label: 'Open the library', kind: 'evidence', q: 'What should a small maker turn on?' }]);
+    if (/line|manufactur|oee|batch/.test(s)) return A('Three lines, OEE 82% overall, right-first-time 99.1%. Batches are progressing live; Line 3 is in changeover. Any deviation feeds Quality automatically.', []);
+    if (/demand|moving|pull|region/.test(s)) { var last = demand[demand.length - 1]; return A('Live demand is ' + t.units + ' packs worth ' + money(t.value, '$') + ', summed from connected pharmacies. Most recent: ' + (last ? last.name + ' in ' + last.region : 'quiet') + '. Measured dispensing, not forecast.', []); }
+    if (/eu|filing|regulat|variation/.test(s)) return A('The EU variation on CardiNex-10 is due in 46 days with two documents missing. Close them or the filing slips a cycle. A regulatory lead owns the submission.', [{ label: 'Open filing', reply: 'Filing opened. The two missing documents are flagged for the regulatory lead.' }]);
+    if (/safety|signal|oedema|pv|adverse/.test(s)) return A('Four peripheral oedema reports on CardiNex-10 in the 65+ group over 90 days cross the threshold. The denominator is real dispensing, so the rate is trustworthy. A qualified person decides on escalation.', []);
+    if (/finance|cash|receivable|working/.test(s)) return A('Working capital is the pressure. A ' + money(Math.round(320000 * scale()), '$') + ' receivable is 45 days overdue from a Middle East distributor. Finance reads the same events as operations, one ledger.', []);
+    if (/supplier|procure/.test(s)) return A('DhakaPack Ltd is at risk, packaging score 58. I would qualify an alternate before it gates a batch. Procurement owns qualification.', [{ label: 'Qualify alternate', reply: 'Alternate supplier added to the qualification queue. Procurement runs the audit.' }]);
+    if (/capacity|sop|forecast|plan/.test(s)) return A('Capacity utilisation is 72% and the forecast tracks within band, so you are inside capacity. The forecast is built from live dispensing, so S&OP and operations never diverge.', []);
+    if (/training|workforce|hse|safety incident/.test(s)) return A('GMP training is 94% current with 12 qualifications overdue; lost-time injury rate is 0.3. Both are EESG emitters tied to the record that gates release.', []);
+    return A('I read that from ' + cur.name + '\'s own records on the exchange. Ask me about demand, the cold chain, quality, serialisation, the environment, the EESG position or the capital ask. I advise; a licensed person makes every clinical, quality and regulatory call.');
   }
 
-  /* ---------------- render and live loop ---------------- */
-
+  /* ---------- render + live loop ---------- */
   function render() {
+    if (!isOn(mod)) mod = 'command';
     var who = cur.personas[0];
     document.getElementById('root').innerHTML =
       UI.topbar({ appName: 'Nexus', personaName: who.name, personaRole: who.role + ' · ' + cur.name }) +
-      '<div class="os">' + UI.osNav(MODS, mod) +
-        '<main class="os-main">' + UI.tenantBar(orgs, cur.id) + '<div style="margin-top:16px">' + moduleBody() + '</div></main>' +
+      '<div class="os">' + UI.osNav(navModules(), mod) +
+        '<main class="os-main">' + UI.tenantBar(orgs, cur.id) + '<div style="margin-top:16px">' + (moduleByKey(mod).render()) + '</div></main>' +
       '</div>';
     UI.iris.context();
     paintLive(true);
   }
-
-  // Update only the live elements, if the current module shows them.
   function paintLive(initial) {
     var t = totals();
     var u = document.getElementById('k-units'); if (u) UI.countUp(u, t.units);
     var v = document.getElementById('k-value'); if (v) UI.countUp(v, t.value, { pre: '$' });
     var c = document.getElementById('no-clock'); if (c) c.textContent = clockText();
+    var kd = document.getElementById('k-dev'); if (kd) kd.textContent = openDevs().length;
     var fc = document.getElementById('fl-cold'); if (fc) fc.innerHTML = coldNow() + '&deg;C';
     var fs = document.getElementById('fl-sig'); if (fs) fs.textContent = demand.length;
+    var flr = document.getElementById('fl-ser'); if (flr) flr.textContent = serialPct().toFixed(1);
     var cn = document.getElementById('no-coldnow'); if (cn) cn.innerHTML = coldNow() + '&deg;C';
     var cc = document.getElementById('no-coldchip'); if (cc) { cc.textContent = cold.breach ? 'breach' : 'in band'; cc.className = 'chip ' + (cold.breach ? 'inconsistent' : 'verified'); }
     var cs = document.getElementById('no-coldspark'); if (cs) cs.innerHTML = cold.series.slice(-14).map(function (x) { return '<i class="' + (x > 8 || x < 2 ? 'hot' : '') + '" style="height:' + Math.max(8, Math.min(100, (x / 12) * 100)) + '%"></i>'; }).join('');
+    var sp = document.getElementById('k-serpct'); if (sp) sp.textContent = serialPct().toFixed(1);
+    var sn = document.getElementById('k-sern'); if (sn) sn.textContent = scans.serialized.toLocaleString('en-US');
+    var kb = document.getElementById('k-block'); if (kb) kb.textContent = scans.blocked;
     if (!initial) {
       var f = document.getElementById('no-feed'); if (f) f.outerHTML = feedHTML(mod === 'demand' ? 12 : mod === 'supply' ? 8 : 5);
       var dd = document.getElementById('no-dec'); if (dd) dd.innerHTML = decList();
+      var bb = document.getElementById('no-batch'); if (bb) bb.innerHTML = batchRows();
+      var sc = document.getElementById('no-scan'); if (sc) sc.innerHTML = scanRows();
+      var dv = document.getElementById('no-dev'); if (dv) dv.innerHTML = devRows();
     }
-    demand.forEach(function (d) { d.fresh = false; });
+    demand.forEach(function (d) { d.fresh = false; }); scans.feed.forEach(function (s) { s.fresh = false; });
   }
-
   function tick() {
     tickN++;
-    // ambient demand every ~5s
     if (tickN % 5 === 0) {
       var code = Math.random() < 0.7 ? 'CARDINEX-10' : 'ONCONEX-100';
       pushDemand(code, code === 'ONCONEX-100' ? rnd(1, 2) : rnd(1, 6), pick(REGIONS), Date.now(), 'baseline', true);
-      stockoutAt -= rnd(3, 11) * 60000; // real pull burns cover, but believably
+      stockoutAt -= rnd(3, 11) * 60000;
+      scans.serialized = Math.min(scans.total, scans.serialized + rnd(400, 1400));
       paintLive(false);
     }
-    // cold-chain drift every ~3s
     if (tickN % 3 === 0) {
-      var last = coldNow(), next;
-      if (cold.breach) next = +(last + (Math.random() - 0.4)).toFixed(1);
-      else next = +(Math.max(3.4, Math.min(7.4, last + (Math.random() - 0.5) * 0.7))).toFixed(1);
+      var last = coldNow(), next = cold.breach ? +(last + (Math.random() - 0.4)).toFixed(1) : +(Math.max(3.4, Math.min(7.4, last + (Math.random() - 0.5) * 0.7))).toFixed(1);
       cold.series.push(next); if (cold.series.length > 40) cold.series = cold.series.slice(-40);
+      batches.forEach(function (b) { if (b.status === 'Running' && b.progress < 100) b.progress = Math.min(100, b.progress + rnd(1, 4)); });
+      seedScan(true);
       paintLive(false);
     }
-    // clock ticks every second
     var c = document.getElementById('no-clock'); if (c) c.textContent = clockText();
   }
 
-  /* ---------------- events and actions ---------------- */
-
+  /* ---------- events + actions ---------- */
   document.addEventListener('click', function (e) {
-    var tn = e.target.getAttribute('data-tenant'); if (tn) { cur = X.org(tn); seedBaseline(); foldExchange(); render(); return; }
-    var m = e.target.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); render(); return; }
+    var tn = e.target.getAttribute('data-tenant'); if (tn) { cur = X.org(tn); mod = 'command'; seedBaseline(); foldExchange(); render(); return; }
+    var mm = e.target.closest('[data-mod]'); if (mm) { mod = mm.getAttribute('data-mod'); render(); return; }
+    var tg = e.target.getAttribute('data-toggle'); if (tg) { var mobj = moduleByKey(tg); if (mobj && !mobj.core) { if (!overrides[cur.id]) overrides[cur.id] = {}; overrides[cur.id][tg] = !isOn(tg); render(); } return; }
+    var dv = e.target.getAttribute('data-dev'); if (dv) { var d = deviations.filter(function (x) { return x.id === dv; })[0]; if (d) { d.status = d.status === 'Open' ? 'CAPA' : 'Closed'; UI.toast('Deviation ' + d.id, 'advanced to ' + d.status + '. A QA lead signs the step.'); paintLive(false); } return; }
     var a = e.target.getAttribute('data-act');
-    if (a === 'hold') { held['LOT'] = true; UI.toast('Lot held', cold.product + ' quarantined, QP review opened, customer notified.'); paintLive(false); if (mod === 'quality') render(); return; }
-    if (a === 'reallocate') { acked['spike'] = true; UI.toast('Reallocated', '800 units moved to cover live demand. Cover clock updated.'); stockoutAt += 4 * 86400000; paintLive(false); return; }
+    if (a === 'hold') { held['LOT'] = true; UI.toast('Lot held', cold.product + ' quarantined, QP review opened, customer notified.'); paintLive(false); return; }
+    if (a === 'reallocate') { acked['spike'] = true; stockoutAt += 4 * 86400000; UI.toast('Reallocated', '800 units moved to cover live demand. Cover clock updated.'); paintLive(false); return; }
     if (a === 'eu') { acked['eu'] = true; UI.iris.ask('What is the EU filing risk?'); paintLive(false); return; }
+    if (a === 'sup') { acked['sup'] = true; UI.toast('Qualification started', 'An alternate packaging supplier was added to the qualification queue.'); paintLive(false); return; }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Medicines access and supply integrity, Q current', status: 'Verified', capitalAsk: 1200000 }, { app: 'nexus', persona: cur.personas[0].id });
-      UI.toast('Published to GIC', cur.name + ' posted a verified outcome and a capital request.');
+      var v = collectEESG().filter(function (x) { return x.status === 'Verified' && x.gic; });
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: v.length + ' verified outcomes, Q current', status: 'Verified', capitalAsk: 1200000 }, { app: 'nexus', persona: cur.personas[0].id });
+      UI.toast('Published to GIC', cur.name + ' posted ' + v.length + ' verified outcomes and a capital request.');
     }
   });
 
-  X.subscribe(function (ev) { if (ev) { foldExchange(); paintLive(false); } });
+  X.subscribe(function (ev) { if (ev) { foldExchange(); if (mod === 'quality' || mod === 'command') render(); else paintLive(false); } });
   UI.watchToasts(function (ev) {
     if (ev.type === 'DEMAND_SIGNAL' && ev.payload.maker === 'ORG-NEXAGEN') return { k: 'Cura', msg: esc(ev.payload.drugName || nameOf(ev.payload.drug)) + ' dispensed in ' + esc(ev.payload.region || 'the field') + '. Demand updated.' };
-    if (ev.type === 'COLD_CHAIN_ALERT') return { k: 'Relay', msg: 'Cold-chain breach on ' + esc(ev.payload.product || cold.product) + '.' };
+    if (ev.type === 'COLD_CHAIN_ALERT') return { k: 'Relay', msg: 'Cold-chain breach on ' + esc(ev.payload.product || cold.product) + '. Deviation raised in Quality.' };
     return null;
   });
 
   UI.iris.mount({
     getContext: irisContext, answer: irisAnswer,
-    greeting: 'I am IRIS, Nexus\'s copilot. I watch demand, the cold chain, quality, the filings and the capital ask across Nexagen, and I show my working. I advise; a licensed person makes every clinical, quality and regulatory call. Ask me what needs you.'
+    greeting: 'I am IRIS, Nexus\'s copilot. I read demand, the cold chain, quality, serialisation, the environment and the capital ask across every enabled module, and I show which specialists I consulted. I advise; a licensed person makes every clinical, quality and regulatory call. Ask me what needs you.'
   });
 
-  seedBaseline();
-  foldExchange();
-  render();
-  setInterval(tick, 1000);
+  seedBaseline(); foldExchange(); render(); setInterval(tick, 1000);
 })();
 </script>
 </body>

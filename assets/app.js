@@ -171,21 +171,44 @@
       else { el.classList.remove('open'); setTimeout(function () { p.hidden = true; }, 200); }
     }
     function bubble(cls, text) { var d = document.createElement('div'); d.className = 'iris-b ' + cls; d.textContent = text; logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight; return d; }
-    function type(d, text) {
-      if (reduce) { d.textContent = text; logEl.scrollTop = logEl.scrollHeight; return; }
+    function type(d, text, cb) {
+      if (reduce) { d.textContent = text; logEl.scrollTop = logEl.scrollHeight; busy = false; if (cb) cb(); return; }
       busy = true; var i = 0, stepN = Math.max(1, Math.round(text.length / 110));
       (function run() {
         if (i <= text.length) { d.textContent = text.slice(0, i); logEl.scrollTop = logEl.scrollHeight; i += stepN; setTimeout(run, 16); }
-        else { d.textContent = text; busy = false; }
+        else { d.textContent = text; busy = false; if (cb) cb(); }
       })();
+    }
+    function renderActions(actions) {
+      if (!actions || !actions.length) return;
+      var bar = document.createElement('div'); bar.className = 'iris-acts';
+      actions.forEach(function (a) {
+        var b = document.createElement('button'); b.className = 'iris-act ' + (a.kind || 'act'); b.textContent = a.label;
+        b.addEventListener('click', function () {
+          if (a.q) { ask(a.q); return; }
+          bubble('me', a.label);
+          var d2 = bubble('iris', ''); type(d2, a.reply || 'Done. A licensed person signs the action before it takes effect.');
+        });
+        bar.appendChild(b);
+      });
+      logEl.appendChild(bar); logEl.scrollTop = logEl.scrollHeight;
     }
     function ask(q) {
       if (busy) return; build(); bubble('me', q);
       var ctx = cfg.getContext ? cfg.getContext() : {};
-      var a = (cfg.answer && cfg.answer(q, ctx)) ||
-        "That reads from this institution's own records on the exchange. Ask me about demand, the cold chain, a batch, the filing, finance or the capital ask.";
-      var d = bubble('iris', ''); var think = document.createElement('span'); think.className = 'iris-dots'; d.appendChild(think);
-      setTimeout(function () { d.textContent = ''; type(d, a); }, reduce ? 0 : 260);
+      var res = (cfg.answer && cfg.answer(q, ctx));
+      if (!res) res = { text: "That reads from this institution's own records on the exchange. Ask me about demand, the cold chain, a batch, quality, the filing, serialisation, the environment or the capital ask." };
+      if (typeof res === 'string') res = { text: res };
+      var agents = res.agents || [], actions = res.actions || [], text = res.text || '';
+      // Show which specialist agents are being consulted (the Telos multi-agent model, made visible).
+      var think = bubble('iris think', '');
+      think.innerHTML = '<span class="iris-dots"></span><span class="iris-team">' + (agents.length ? 'Consulting ' + agents.map(esc).join(', ') : 'Thinking') + '</span>';
+      busy = true;
+      setTimeout(function () {
+        think.remove();
+        var d = bubble('iris', '');
+        type(d, text, function () { renderActions(actions); });
+      }, reduce ? 0 : (agents.length ? 850 : 300));
     }
     function paintContext() {
       if (!el) return; var ctx = cfg.getContext ? cfg.getContext() : {};
