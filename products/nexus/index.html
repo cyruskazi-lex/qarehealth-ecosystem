@@ -14,6 +14,7 @@
 <body>
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
+<script src="../../assets/spine.js"></script>
 <script src="../../assets/app.js"></script>
 <script src="../../assets/auth.js"></script>
 <script>
@@ -269,8 +270,8 @@
       '</tbody></table></div></div>' +
       '<div class="cards3">' +
       trustCard('Golden record ownership', 'Defined', 'Each data domain has a single owner and a reconciliation rule', [['Patient', 'Source EHR (never Nexus)'], ['Drug master', 'Regulatory (CMC)'], ['Batch record', 'QA / QP'], ['Demand', 'Exchange (aggregated)']], '') +
-      trustCard('Data retention', 'Compliant', 'Retention periods per regulatory requirement', [['Batch records', '25 years (FDA)'], ['Adverse events', '10 years post-expiry'], ['Audit trail', 'Life of system + 5 years'], ['Cold-chain logs', '7 years']], '') +
-      trustCard('Breach notification', 'Tested', 'Incident response tested quarterly', [['Detection', '< 1 hour'], ['Assessment', '< 4 hours'], ['Notification', '< 72 hours (GDPR)'], ['Post-incident review', 'Within 14 days']], '') +
+      trustCard('Data retention', 'Compliant', 'Retention periods per regulatory requirement', [['Batch records', '25 years (longest market requirement)'], ['Adverse events', '10 years post-expiry'], ['Audit trail', 'Life of system + 5 years'], ['Cold-chain logs', '7 years']], '') +
+      trustCard('Breach notification', 'Tested', 'Incident response tested quarterly', [['Detection', '< 1 hour'], ['Assessment', '< 4 hours'], ['Notification', 'Per the ' + X.pack().country + ' pack and the regulator'], ['Post-incident review', 'Within 14 days']], '') +
       '</div>' + prov('data governance is not a document; it is enforced by architecture per domain');
   }
 
@@ -480,7 +481,7 @@
           '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Registrations by market</div>' +
           '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Market</th><th>Product</th><th>Status</th><th>Next action</th></tr></thead><tbody>' +
           [['US FDA', 'CardiNex-10', 'Approved', 'annual report due'], ['EU (AGES)', 'CardiNex-10', 'Variation', 'due 46d, 2 docs missing'], ['TGA', 'OncoNex-100', 'Approved', 'none'], ['WHO PQ', 'CardiNex-10', 'In review', 'respond to queries'], ['NAFDAC', 'OncoNex-100', 'Submitted', 'awaiting acknowledgement']].map(function (r) {
-            var c = r[2] === 'Approved' ? 'verified' : r[2] === 'Variation' ? 'inconsistent' : 'claimed';
+            var c = 'claimed';
             return '<tr><td class="nm">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td><span class="chip ' + c + '">' + esc(r[2]) + '</span></td><td class="sub2">' + esc(r[3]) + '</td></tr>'; }).join('') +
           '</tbody></table></div></div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Submission pipeline</div>' +
@@ -572,7 +573,7 @@
           intSubtabs() + content;
       } },
 
-    { key: 'compliance', label: 'Security & Compliance', ic: 'CP', group: 'Trust', desc: 'HIPAA, ISO, 21 CFR Part 11, DSCSA and the security engine, checked continuously.',
+    { key: 'compliance', label: 'Security & Compliance', ic: 'CP', group: 'Trust', desc: 'Privacy law by jurisdiction pack, ISO, GxP e-records and the security engine.',
       rails: { exchange: [], eesg: UI.trust.eesgMetrics('pharma'), gic: true }, agents: ['Compliance', 'Security', 'Quality'],
       render: function () {
         var content = '';

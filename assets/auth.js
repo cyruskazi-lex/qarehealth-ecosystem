@@ -55,7 +55,7 @@
             '<button class="auth-ssobtn" data-sso="SAML SSO">SAML / Okta</button>' +
           '</div>' +
           '<button type="button" class="auth-demobtn" data-demo="1">Use demo access</button>' +
-          '<div class="auth-trust"><span class="shield"></span>Encrypted, MFA enforced, audit-logged. HIPAA and ' + (sector === 'pharma' ? '21 CFR Part 11' : 'ISO 27001') + ' compliant.</div>' +
+          '<div class="auth-trust"><span class="shield"></span>Encrypted, MFA enforced, audit-logged. Rules follow the selected jurisdiction pack.</div>' +
           '<div class="auth-legal">&copy; 2026 Qäre Health. A Lexington Group company.<br>' +
             '<a href="#" data-legal="terms">Terms</a> &middot; <a href="#" data-legal="privacy">Privacy</a> &middot; <a href="#" data-legal="security">Security</a> &middot; <a href="#" data-legal="governance">Data governance</a><br>' +
             '<span class="auth-note">Demonstration environment. Not for use with real patient data or for clinical decisions.</span></div>' +
@@ -88,7 +88,7 @@
         'Verifying identity and MFA',
         'Establishing TLS 1.3 session',
         'Applying role-based access (' + chosenRole.label + ')',
-        'Loading ' + (sector === 'pharma' ? '21 CFR Part 11' : 'HIPAA') + '-compliant workspace'
+        'Loading jurisdiction policy pack'
       ];
       var d = screen(
         '<div class="auth-wrap"' + wrapStyle() + '><div class="splash">' +

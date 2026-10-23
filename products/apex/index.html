@@ -14,11 +14,13 @@
 <body>
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
+<script src="../../assets/spine.js"></script>
 <script src="../../assets/app.js"></script>
 <script src="../../assets/auth.js"></script>
 <script>
 (function () {
   var X = window.QareExchange, UI = window.QareUI, esc = UI.esc, money = UI.money;
+  function isUS() { return X.pack && X.pack().id === 'US'; }
   UI.init('apex');
   var SESSION = null;
 
@@ -26,15 +28,15 @@
   var PROFILES = [
     { id: 'PROF-HOSP', name: 'Dhaka Tertiary Hospital', kind: 'Hospital', tag: 'ACUTE',
       persona: { id: 'U-NAIMA', name: 'Dr. Naima Islam', role: 'Director of operations' },
-      cfg: { assessment: 'Acute care plan', payment: 'DRG, HRRP penalty', accred: 'Joint Commission', window: true, unitWord: 'ward' },
+      cfg: { assessment: 'Acute care plan', payment: 'Case-based, outcome-linked', accred: 'National accreditation', window: true, unitWord: 'ward' },
       units: [ { name: 'General medicine', total: 60, occ: 51 }, { name: 'Surgery', total: 40, occ: 33 }, { name: 'Maternity', total: 30, occ: 27 }, { name: 'Paediatrics', total: 28, occ: 19 }, { name: 'ICU', total: 12, occ: 11 }, { name: 'Isolation', total: 10, occ: 3 } ] },
     { id: 'PROF-SNF', name: 'Shetu Post-Acute Care', kind: 'Skilled Nursing', tag: 'POST-ACUTE',
       persona: { id: 'U-SHAHANA', name: 'Shahana Akter', role: 'Administrator' },
-      cfg: { assessment: 'MDS 3.0, CMS schedule', payment: 'PDPM, SNF VBP', accred: 'CMS Five-Star', window: true, unitWord: 'unit' },
+      cfg: { assessment: 'Standard assessment, regulator schedule', payment: 'Per-diem, outcome-linked', accred: 'Staffing and licensure', window: true, unitWord: 'unit' },
       units: [ { name: 'Rehabilitation', total: 32, occ: 27 }, { name: 'Long-term care', total: 40, occ: 36 }, { name: 'Memory care', total: 18, occ: 15 } ] },
     { id: 'PROF-RES', name: 'Prosanti Residential Care', kind: 'Residential Care', tag: 'ASSISTED',
       persona: { id: 'U-RINA-H', name: 'Rina Haque', role: 'Care home manager' },
-      cfg: { assessment: 'ADL review', payment: 'Private pay', accred: 'State licensure', window: false, unitWord: 'wing' },
+      cfg: { assessment: 'ADL review', payment: 'Private pay', accred: 'Licensure', window: false, unitWord: 'wing' },
       units: [ { name: 'Independent wing', total: 24, occ: 20 }, { name: 'Assisted wing', total: 28, occ: 25 }, { name: 'Respite', total: 8, occ: 3 } ] }
   ];
   var cur = PROFILES[0];
@@ -442,17 +444,27 @@
       '<div class="rows">' + rows.map(function (r) { return '<div class="row" style="padding:7px 10px"><span class="m">' + esc(r[0]) + '</span><span class="v">' + r[1] + '</span></div>'; }).join('') + '</div>' +
       (footer ? '<div class="sub2" style="margin-top:10px;font-style:italic">' + esc(footer) + '</div>' : '') + '</div>';
   }
+  function packPrivacyHTML() {
+    var pk = X.pack(), fl = X.FLOWS || [];
+    return trustCard('Privacy law: ' + pk.country + ' pack', 'Claimed', pk.law,
+      [['Consent basis by flow', '<span class="chip claimed">see Core, Consent</span>'], ['Cross-border', esc(pk.crossBorder)], ['Cohort floor for publishing', '<span class="chip claimed">' + pk.minCohort + ' people</span>'], ['Status of this pack', '<span class="chip claimed">draft, needs local counsel</span>']],
+      'The pack is policy data the exchange enforces on every access. It is a draft summary, not legal advice.') +
+      trustCard('Sensitive records', 'Enforced in the demo', 'Records the patient marks sensitive, such as substance use, mental health or sexual health, are sealed and open only by break-glass or the patient\'s own consent.',
+        [['Protected notes', '<span class="chip claimed">tagged and sealed</span>'], ['Break glass', '<span class="chip claimed">logged with identity and reason</span>'], ['Consent', '<span class="chip claimed">double-key, revocable</span>'], ['Re-disclosure', '<span class="chip claimed">blocked by default</span>']],
+        'Try the break-glass on a protected behavioral health note in the chart.');
+  }
   function clinicalTrustHTML() {
-    return '<div class="qt-wrap">' +
+    var us = isUS();
+    return '<div class="qt-wrap">' + (us ? '' : packPrivacyHTML()) + (us ? 
       trustCard('HIPAA / HITECH compliance', 'Architectural', 'Privacy and security are built into the architecture, not bolted on. Every access is logged, every record carries consent, and breach notification is automated.',
         [['Privacy rule', '<span class="chip claimed">compliant</span>'], ['Security rule', '<span class="chip claimed">compliant</span>'], ['Breach notification', '<span class="chip claimed">automated, 72h</span>'], ['Minimum necessary', '<span class="chip claimed">RBAC-enforced</span>'], ['Business associate', '<span class="chip claimed">BAA executed</span>']],
-        'HIPAA is not a checklist. It is an architecture decision: minimum necessary is the default, not the exception.') +
+        'HIPAA is not a checklist. It is an architecture decision: minimum necessary is the default, not the exception.') : '') +
       trustCard('SOC 2 Type II', 'Report on file', 'Independent auditor attestation over the trust service criteria: security, availability, processing integrity, confidentiality and privacy.',
         [['Audit period', '12 months, continuous'], ['Trust criteria', '5 of 5 covered'], ['Exceptions', 'None'], ['Next audit', 'Q1 scheduled']],
         'The report is available under NDA to procurement and legal.') +
-      trustCard('42 CFR Part 2 (substance use)', 'Enforced', 'Substance-use and behavioral health records carry the additional federal protection. The system enforces it with break-glass access and double consent.',
+      (us ? trustCard('42 CFR Part 2 (substance use)', 'Enforced', 'Substance-use and behavioral health records carry the additional federal protection. The system enforces it with break-glass access and double consent.',
         [['Protected notes', '<span class="chip claimed">tagged and sealed</span>'], ['Break glass', '<span class="chip claimed">logged with identity and reason</span>'], ['Consent', '<span class="chip claimed">double-key, revocable</span>'], ['Re-disclosure', '<span class="chip claimed">blocked by default</span>']],
-        'The chart shows this in action: try the break-glass on a protected behavioral health note.') +
+        'The chart shows this in action: try the break-glass on a protected behavioral health note.') : '') +
       trustCard('Role-based access (RBAC)', 'Minimum necessary', 'Every user gets the minimum access their role requires. A nurse sees vitals; a billing clerk sees the encounter, not the note. Escalation is logged.',
         [['Roles defined', '14'], ['Access matrix', '<span class="chip claimed">enforced per session</span>'], ['Escalation audit', '<span class="chip claimed">immutable log</span>'], ['Time-bound access', '<span class="chip claimed">auto-expire</span>']],
         null) +
@@ -461,7 +473,7 @@
         null) +
       trustCard('Data ownership and model training', 'Unambiguous', 'Patient data belongs to the institution. It is never used to train models, never shared without consent, and never monetised.',
         [['Data ownership', '<span class="chip claimed">institution owns</span>'], ['Model training', '<span class="chip claimed">never, contractual</span>'], ['Data portability', '<span class="chip claimed">FHIR export, on demand</span>'], ['Deletion', '<span class="chip claimed">right to delete, 30 days</span>']],
-        'This is contractual: the DPA and BAA make it enforceable, not aspirational.') +
+        'This is contractual: the data processing agreement makes it enforceable, not aspirational.') +
       '</div>';
   }
   function modelGovernanceHTML() {
@@ -504,6 +516,7 @@
     }).join('') + '</div>';
   }
   function certificationHTML() {
+    if (!isUS()) return interopPackHTML();
     var certs = [
       ['ONC Health IT Certification (2015 Cures Update)', '<span class="chip claimed">Certified</span>', 'Covers USCDI v3, C-CDA, bulk FHIR, patient access API'],
       ['FHIR R4 conformance', '<span class="chip claimed">Conformant</span>', 'US Core 6.1.0 profiles, Argonaut, SMART on FHIR'],
@@ -528,12 +541,38 @@
       connections.map(function (c) { return '<tr><td class="nm">' + esc(c[0]) + '</td><td class="mono">' + esc(c[1]) + '</td><td>' + c[2] + '</td><td class="sub2">' + esc(c[3]) + '</td></tr>'; }).join('') +
       '</tbody></table></div></div></div>';
   }
+  function interopPackHTML() {
+    var pk = X.pack();
+    var certs = [
+      ['FHIR R4 resource views', '<span class="chip claimed">Specified</span>', 'Patient, Encounter, Observation (LOINC), MedicationRequest, MedicationDispense, ServiceRequest, Consent, AuditEvent. See Core, FHIR view.'],
+      ['SMART on FHIR', '<span class="chip claimed">Specified</span>', 'Used only where the site already runs an EMR that supports it. Not assumed.'],
+      ['Client registry (OpenHIE)', '<span class="chip claimed">Demonstrated</span>', 'Probabilistic matching with human review and patient confirmation. See Core, Identity.'],
+      ['Facility and health-worker registries', '<span class="chip claimed">Planned</span>', 'Master lists the exchange will resolve against.'],
+      ['Terminology service', '<span class="chip claimed">Planned</span>', 'LOINC for labs, ICD for diagnoses, national drug list to confirm for ' + esc(pk.country) + '.'],
+      ['National health-data standard', '<span class="chip unmeasured">Unmeasured</span>', 'To confirm with the ministry for ' + esc(pk.country) + '. Nothing is assumed.']
+    ];
+    var connections = [
+      ['Existing EMR with FHIR', 'FHIR R4 / SMART', '<span class="chip claimed">Per site</span>', 'ADT, results, medications, where the site has one'],
+      ['Open-source EMR (for example OpenMRS)', 'FHIR R4 or REST', '<span class="chip claimed">Per site</span>', 'Encounters, orders, results'],
+      ['National aggregate reporting (for example DHIS2)', 'Aggregate data exchange', '<span class="chip claimed">Planned</span>', 'Aggregate counts only, never identified records'],
+      ['Paper or no EMR', 'Qäre native record', '<span class="chip claimed">Available</span>', 'Apex runs as the system of record at sites without one']
+    ];
+    return '<div class="qt-wrap">' +
+      '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Standards and registries, ' + esc(pk.country) + ' pack</div>' +
+      '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Standard</th><th>Status</th><th>Scope</th></tr></thead><tbody>' +
+      certs.map(function (c) { return '<tr><td class="nm">' + esc(c[0]) + '</td><td>' + c[1] + '</td><td class="sub2">' + c[2] + '</td></tr>'; }).join('') +
+      '</tbody></table></div></div>' +
+      '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Connection patterns</div>' +
+      '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>System</th><th>Protocol</th><th>Status</th><th>Data</th></tr></thead><tbody>' +
+      connections.map(function (c) { return '<tr><td class="nm">' + esc(c[0]) + '</td><td class="mono">' + esc(c[1]) + '</td><td>' + c[2] + '</td><td class="sub2">' + esc(c[3]) + '</td></tr>'; }).join('') +
+      '</tbody></table></div></div></div>';
+  }
   function coexistenceHTML() {
     return '<div class="qt-wrap">' +
       '<div class="pitch"><div class="k">Apex rides on top</div><div class="l">Apex does not replace your EHR. It augments the system of record with transitions intelligence, the EESG framework, and the capital rail. The EHR remains the source of truth for orders, notes and billing.</div></div>' +
       '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Coexistence architecture</div>' +
       '<div class="rows">' +
-      [['System of record', 'Your existing EHR (Epic, Cerner, PCC, MEDITECH)'],
+      [['System of record', isUS() ? 'Your existing EHR' : 'Your existing EMR where there is one, otherwise the Qäre record'],
        ['Apex layer', 'Transitions, readmission risk, EESG, impact, capital'],
        ['Data flow', 'FHIR R4 bidirectional; your EHR is the authority'],
        ['Deployment', 'Cloud overlay, no on-premise install'],
@@ -596,7 +635,7 @@
       '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Whole-person cross-setting record</div>' +
       '<div class="sub2" style="margin-bottom:10px">One patient, one record, across settings. A discharge from Hospital opens a window; the SNF picks up the same record; home health (Bridge) continues in the community; the patient sees the same record in Nova. Nothing is re-keyed.</div>' +
       '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
-      [['Hospital', 'Admission, acute care, discharge'], ['SNF', 'Rehab, MDS assessment, care plan'], ['Home health', 'Bridge visit, medication check, vital signs'], ['Community', 'CHW follow-up, social determinants'], ['Patient', 'Nova: the same record, their view']].map(function (s) {
+      [['Hospital', 'Admission, acute care, discharge'], ['Post-acute', 'Rehab, standard assessment, care plan'], ['Home health', 'Bridge visit, medication check, vital signs'], ['Community', 'CHW follow-up, social determinants'], ['Patient', 'Nova: the same record, their view']].map(function (s) {
         return '<div class="card shadow" style="flex:1;min-width:140px;padding:12px"><div style="font-family:var(--font-brand);font-weight:700;font-size:12px;margin-bottom:4px">' + esc(s[0]) + '</div><div class="sub2" style="font-size:11px">' + esc(s[1]) + '</div></div>';
       }).join('') + '</div></div>' +
       prov('one record across settings and sites, with roll-up reporting; the whole-person view is the flagship differentiator');
@@ -604,8 +643,10 @@
 
   /* ---------- A6: ROI ---------- */
   function roiHTML() {
+    var us = isUS();
     var drivers = [
-      ['HRRP penalty avoidance', '$840,000', 'Readmission rate from 7.8% to 5.8%; penalty reduction at current Medicare volume'],
+      us ? ['HRRP penalty avoidance', '$840,000', 'Readmission rate from 7.8% to 5.8%; penalty reduction at current Medicare volume']
+         : ['Referral completion and avoided repeat tests', '$840,000', 'Fewer lost referrals and duplicate tests because results follow the patient; volumes supplied by the buyer'],
       ['LOS reduction', '$620,000', '0.4 day mean LOS reduction at $1,550 per bed-day marginal cost'],
       ['Denial reduction', '$380,000', '18% fewer denials from real-time eligibility and prior auth at order entry'],
       ['Staffing optimisation', '$290,000', 'Predictive scheduling reduces agency spend by 22%'],
@@ -621,13 +662,20 @@
       '</tbody></table></div></div>' +
       '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Value-based contract</div>' +
       '<div class="rows">' +
-      [['Program', 'CMS Hospital Readmissions Reduction Program (HRRP)'],
+      (us ? [['Program', 'CMS Hospital Readmissions Reduction Program (HRRP)'],
        ['Payer', 'Medicare; expandable to Medicaid MCO and commercial'],
-       ['Outcome metric', '30-day all-cause readmission rate'],
+       ['Outcome metric', '30-day all-cause readmission rate (a utilization indicator)'],
        ['Baseline', '7.8% (facility, 12-month trailing)'],
        ['Target', '5.0% (national top quartile)'],
-       ['Payment trigger', 'Penalty avoidance + shared savings on avoided readmissions'],
-       ['Contract term', '36 months with annual true-up']].map(function (r) {
+       ['Payment trigger', 'Penalty avoidance + shared savings'],
+       ['Contract term', '36 months with annual true-up']]
+       : [['Program', 'Outcome-linked financing through the Global Impact Commons'],
+       ['Payer', 'Ministry programme, insurer or capital partner, to be agreed'],
+       ['Outcome metric', 'Measured improvement linked to an intervention, per the outcome rule'],
+       ['Baseline', 'Measured per patient at enrolment'],
+       ['Target', 'Set with the payer against the clinical threshold'],
+       ['Payment trigger', 'Verified outcomes only, in cohorts of at least ' + X.pack().minCohort],
+       ['Contract term', 'To be agreed']]).map(function (r) {
         return '<div class="row" style="padding:7px 10px"><span class="m">' + esc(r[0]) + '</span><span class="v">' + esc(r[1]) + '</span></div>';
       }).join('') + '</div></div>' +
       '<div style="display:flex;flex-direction:column;gap:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Implementation</div>' +
@@ -771,7 +819,7 @@
           prov('DISCHARGE and REFERRAL events propagate to Bridge, Relay and Nova; a cleared window is a utilization indicator; a health outcome needs a measured improvement');
       } },
 
-    { key: 'staffing', label: 'Staffing & roster', ic: 'SF', group: 'Operations', desc: 'Nurse-to-patient ratios, the Five-Star measure.',
+    { key: 'staffing', label: 'Staffing & roster', ic: 'SF', group: 'Operations', desc: 'Nurse-to-patient ratios against the staffing standard.',
       rails: { hie: [], eesg: [{ pillar: 'Social', front: 'Care quality and safety', measure: 'Nurse-to-patient ratio, peak', value: '1:6.8', status: 'Inconsistent' }], gic: false }, agents: ['Staffing', 'Quality'],
       render: function () {
         if (curStaff) {
@@ -789,7 +837,7 @@
               prov('a panel is the set of patients under this clinician, read from the inpatient roster');
           }
         }
-        return head('Staffing & roster', 'The clinical workforce: physicians on service, nurses rostered, and the ratios that drive the Five-Star measure. Click anyone to see their panel.') +
+        return head('Staffing & roster', 'The clinical workforce: physicians on service, nurses rostered, and the ratios against the staffing standard. Click anyone to see their panel.') +
           kpiRow([[doctors.length, 'physicians on service'], [nurses.length, 'nurses rostered'], ['1:4.8', 'mean ratio'], ['1:6.8', 'night ratio']]) +
           '<div class="qt-wrap"><table class="qt"><thead><tr><th>Shift</th><th class="num">Nurses</th><th class="num">Patients</th><th>Ratio</th><th>Status</th></tr></thead><tbody>' +
           staffRoster.map(function (s) { return '<tr><td class="nm">' + esc(s.shift) + '</td><td class="num">' + s.nurses + '</td><td class="num">' + s.patients + '</td><td class="mono">' + esc(s.ratio) + '</td><td>' + (s.status === 'warn' ? '<span class="chip claimed">below target</span>' : '<span class="chip verified">ok</span>') + '</td></tr>'; }).join('') +
@@ -798,7 +846,7 @@
           '<div class="qt-wrap" style="border:0;max-height:320px;overflow:auto"><table class="qt"><tbody>' + doctors.map(function (d) { var panel = patients.filter(function (p) { return p.attending === d.name; }).length; return '<tr class="click" data-staff="' + esc(d.id) + '"><td class="nm">' + esc(d.name) + '</td><td class="sub2">' + esc(d.role) + '</td><td class="num sub2">' + panel + ' pts</td><td style="text-align:right"><span class="chip ' + (d.status === 'On call' ? 'claimed' : 'verified') + '">' + esc(d.status) + '</span></td></tr>'; }).join('') + '</tbody></table></div></div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Nurses rostered</div>' +
           '<div class="qt-wrap" style="border:0;max-height:320px;overflow:auto"><table class="qt"><tbody>' + nurses.map(function (n) { return '<tr class="click" data-staff="' + esc(n.id) + '"><td class="nm">' + esc(n.name) + '</td><td class="sub2">' + esc(n.role) + '</td><td style="text-align:right"><span class="chip ' + (n.status === 'Night' ? 'claimed' : 'verified') + '">' + esc(n.status) + '</span></td></tr>'; }).join('') + '</tbody></table></div></div></div>' +
-          prov('the staffing ratio is an EESG care-quality measure, and for a SNF it drives the Five-Star rating');
+          prov('the staffing ratio is an EESG care-quality measure, and for a post-acute facility it drives the staffing standard');
       } },
 
     { key: 'inventory', label: 'Inventory & supply', ic: 'IV', group: 'Operations', desc: 'Pharmacy, consumables, blood, gases and PPE with par levels and cold chain.',
@@ -854,9 +902,9 @@
     { key: 'accreditation', label: 'Accreditation & survey', ic: 'AC', group: 'Assure', desc: 'Accreditation standing and survey readiness.',
       rails: { hie: [], eesg: [{ pillar: 'Governance', front: 'Care quality and safety', measure: 'Accreditation standing', value: 'in good standing', status: 'Verified' }], gic: false }, agents: ['Compliance', 'Quality'],
       render: function () {
-        var rows = cur.kind === 'Hospital' ? [['Joint Commission', 'Accredited', 'triennial survey, 14 months'], ['Fire safety', 'Compliant', 'annual drill due'], ['Infection control', 'Compliant', 'none']]
-          : cur.kind === 'Skilled Nursing' ? [['CMS Five-Star', '4 stars', 'staffing star limiting'], ['State survey', 'No deficiencies', 'next window open'], ['MDS submission', 'Current', 'on CMS schedule']]
-          : [['State licensure', 'Licensed', 'renewal in 9 months'], ['Fire safety', 'Compliant', 'none'], ['Food safety', 'Compliant', 'inspection passed']];
+        var rows = cur.kind === 'Hospital' ? [['National accreditation', 'Claimed', 'survey cycle to confirm'], ['Fire safety', 'Compliant', 'annual drill due'], ['Infection control', 'Compliant', 'none']]
+          : cur.kind === 'Skilled Nursing' ? [['Staffing standard', 'Claimed', 'night ratio below target'], ['Regulator inspection', 'Claimed', 'next window open'], ['Assessment submission', 'Claimed', 'on the regulator schedule']]
+          : [['Licensure', 'Claimed', 'renewal in 9 months'], ['Fire safety', 'Compliant', 'none'], ['Food safety', 'Compliant', 'inspection passed']];
         return head('Accreditation & survey', cur.cfg.accred + ' readiness and the obligations behind it.') +
           '<div class="qt-wrap"><table class="qt"><thead><tr><th>Standard</th><th>Status</th><th>Next action</th></tr></thead><tbody>' +
           rows.map(function (r) { var c = /Accredited|No deficiencies|Compliant|Licensed|Current|stars/.test(r[1]) ? 'verified' : 'claimed'; return '<tr><td class="nm">' + esc(r[0]) + '</td><td><span class="chip ' + c + '">' + esc(r[1]) + '</span></td><td class="sub2">' + esc(r[2]) + '</td></tr>'; }).join('') +
@@ -889,7 +937,7 @@
       render: function () {
         return head('Assessments & care plans', cur.cfg.assessment + ' and the care plans that follow from it.') +
           kpiRow([['97%', 'assessments current'], [cur.cfg.assessment.split(',')[0], 'instrument'], ['3', 'due this week'], ['0', 'overdue']]) +
-          '<div class="card shadow"><div class="sub" style="font-size:13px">' + (cur.kind === 'Skilled Nursing' ? 'MDS 3.0 drives both the care plan and the PDPM case mix, so the clinical assessment and the payment are one record, not two.' : cur.kind === 'Residential Care' ? 'ADL reviews track each resident\'s independence and flag when a higher level of care is needed.' : 'The acute care plan is built from admission and updated each round.') + ' Outcomes feed the health-outcomes front of the framework.</div></div>' +
+          '<div class="card shadow"><div class="sub" style="font-size:13px">' + (cur.kind === 'Skilled Nursing' ? 'The standard assessment drives both the care plan and the case mix, so the clinical assessment and the payment are one record, not two.' : cur.kind === 'Residential Care' ? 'ADL reviews track each resident\'s independence and flag when a higher level of care is needed.' : 'The acute care plan is built from admission and updated each round.') + ' Outcomes feed the health-outcomes front of the framework.</div></div>' +
           prov('the assessment instrument is the clinical spine of this profile');
       } },
 
@@ -949,36 +997,36 @@
       } },
 
     { key: 'integration', label: 'Data & Integration', ic: 'DI', group: 'Trust', desc: 'EMR/EHR, labs, pharmacy and public-health connections.',
-      rails: { hie: ['LAB_RESULT', 'RX_DISPENSED', 'REFERRAL'], eesg: [{ pillar: 'Governance', front: 'Care quality and safety', measure: 'Integrations healthy', value: '8 of 8', status: 'Verified' }], gic: false }, agents: ['Integration', 'IT'],
+      rails: { hie: ['LAB_RESULT', 'RX_DISPENSED', 'REFERRAL'], eesg: [{ pillar: 'Governance', front: 'Care quality and safety', measure: 'Integrations specified', value: '8 of 8', status: 'Claimed' }], gic: false }, agents: ['Integration', 'IT'],
       render: function () {
-        var sys = [['Native EHR (Qäre)', 'FHIR R4', 'Healthy'], ['Connected EMRs', 'HL7 FHIR R4 / v2', 'Healthy'], ['Lab network (Prism)', 'HL7 / LOINC', 'Healthy'], ['Pharmacy (Cura)', 'NCPDP / FHIR', 'Healthy'], ['Health info exchange (TEFCA)', 'Carequality', 'Healthy'], ['Public health reporting', 'de-identified, HL7', 'Healthy'], ['Community clinics', 'FHIR R4', 'Healthy'], ['Global Impact Commons', 'signed records', 'Healthy']];
+        var sys = [['Native EHR (Qäre)', 'FHIR R4'], ['Connected EMRs', 'HL7 FHIR R4 / v2'], ['Lab network (Prism)', 'HL7 / LOINC'], ['Pharmacy (Cura)', isUS() ? 'NCPDP / FHIR' : 'FHIR R4'], ['Health info exchange', isUS() ? 'TEFCA, Carequality' : 'Qäre HIE, OpenHIE components'], ['Public health reporting', 'notifiable cases (identified) and aggregate surveillance'], ['Community clinics', 'FHIR R4'], ['Global Impact Commons', 'verified aggregates only']];
         var body = '';
         if (intTab === 'systems') {
-          body = kpiRow([['8', 'integrations live'], ['HL7 FHIR R4', 'clinical standard'], ['TEFCA', 'exchange framework'], ['de-identified', 'to public health']]) +
+          body = kpiRow([['8', 'integrations specified'], ['HL7 FHIR R4', 'clinical standard'], [isUS() ? 'TEFCA' : 'OpenHIE', 'exchange framework'], ['two flows', 'to public health']]) +
             '<div class="qt-wrap"><table class="qt"><thead><tr><th>System</th><th>Standard</th><th>Status</th></tr></thead><tbody>' +
-            sys.map(function (s) { return '<tr><td class="nm">' + esc(s[0]) + '</td><td class="mono">' + esc(s[1]) + '</td><td><span class="chip verified">' + esc(s[2]) + '</span></td></tr>'; }).join('') +
-            '</tbody></table></div>' + prov('native EHR plus connected EMRs over FHIR; only de-identified aggregates leave for public health');
+            sys.map(function (s) { return '<tr><td class="nm">' + esc(s[0]) + '</td><td class="mono">' + esc(s[1]) + '</td><td><span class="chip claimed">Specified</span></td></tr>'; }).join('') +
+            '</tbody></table></div>' + prov('native EHR plus connected EMRs over FHIR; public health receives notifiable cases where the pack mandates them and aggregates otherwise');
         } else if (intTab === 'certification') {
-          body = UI.illustrative('Illustrative US-market example (ONC, TEFCA, Epic, PointClickCare). No certification is held and no connection is live. Packs for other markets are not built yet.') + certificationHTML();
+          body = UI.illustrative(isUS() ? 'Illustrative US-market example (ONC, TEFCA, Epic, PointClickCare). No certification is held and no connection is live.' : 'Interoperability pattern for the ' + X.pack().country + ' pack. No certification is held and no connection is live. National standards are to be confirmed with the ministry.') + certificationHTML();
         } else if (intTab === 'coexistence') {
           body = UI.illustrative('Illustrative architecture and timelines. Go-live estimates are set per site once the systems are known.') + coexistenceHTML();
         }
-        return head('Data & Integration', 'Apex is a native EHR that also connects. It speaks FHIR and HL7 to outside systems, and sends only de-identified data to public-health portals.') +
+        return head('Data & Integration', 'Apex is a native EHR that also connects. It speaks FHIR and HL7 to outside systems, and reports to public health through two flows: identified notifiable cases and aggregate surveillance.') +
           intSubtabs() + body;
       } },
 
-    { key: 'compliance', label: 'Security & Compliance', ic: 'CP', group: 'Trust', desc: 'HIPAA, HITECH, ISO, SOC 2 and the security engine, checked continuously.',
+    { key: 'compliance', label: 'Security & Compliance', ic: 'CP', group: 'Trust', desc: 'Privacy law by jurisdiction pack, ISO, SOC 2 and the security engine.',
       rails: { hie: [], eesg: UI.trust.eesgMetrics('provider'), gic: true }, agents: ['Compliance', 'Security', 'Privacy'],
       render: function () {
         var body = '';
         if (compTab === 'overview') {
           body = UI.trust.render({ sector: 'provider' });
         } else if (compTab === 'trust') {
-          body = UI.illustrative('Illustrative US-market example (HIPAA, SOC 2, 42 CFR Part 2). None of this is a held certification, and jurisdiction packs for other countries are not built yet.') + clinicalTrustHTML();
+          body = UI.illustrative(isUS() ? 'Illustrative US-market example (HIPAA, SOC 2, 42 CFR Part 2). None of this is a held certification.' : 'Privacy controls under the ' + X.pack().country + ' pack, a draft summary that needs local counsel. None of this is a held certification.') + clinicalTrustHTML();
         } else if (compTab === 'model') {
           body = UI.illustrative('Model figures are illustrative. Real sensitivity, specificity and calibration come from a validation study on the facility\'s own data.') + modelGovernanceHTML();
         }
-        return head('Security & Compliance', 'Patient data is protected by a live security and privacy engine. HIPAA, HITECH and ISO are architectural, not a report.') +
+        return head('Security & Compliance', 'Patient data is protected by a live security and privacy engine. Privacy rules follow the selected jurisdiction pack and are enforced by the exchange.') +
           compSubtabs() + body;
       } },
 
@@ -1031,9 +1079,9 @@
       rails: { hie: [], eesg: [{ pillar: 'Economic', front: 'Affordability', measure: 'System occupancy', valueFn: function () { return '83%'; }, status: 'Verified' }], gic: false }, agents: ['Operations', 'Strategy'],
       render: function () { return multiFacilityHTML(); } },
 
-    { key: 'roi', label: 'ROI & financial case', ic: 'RO', group: 'Enterprise', desc: 'The defensible financial case: HRRP penalties, LOS, denials, staffing, value-based contracts.',
+    { key: 'roi', label: 'ROI & financial case', ic: 'RO', group: 'Enterprise', desc: 'The defensible financial case: LOS, denials, staffing, outcome-linked contracts.',
       rails: { hie: [], eesg: [{ pillar: 'Economic', front: 'Affordability', measure: 'ROI multiple', value: '3.8x', status: 'Verified' }], gic: true }, agents: ['Finance', 'Strategy', 'Capital'],
-      render: function () { return UI.illustrative('Projection from illustrative assumptions. The buyer supplies real volumes; US-market example (HRRP).') + roiHTML(); } },
+      render: function () { return UI.illustrative('Projection from illustrative assumptions in USD. The buyer supplies real volumes and currency. ' + (isUS() ? 'US-market example (HRRP).' : 'Pack: ' + X.pack().country + '.')) + roiHTML(); } },
 
     { key: 'references', label: 'Proof & references', ic: 'RF', group: 'Enterprise', desc: 'Case studies, analyst citations, compliance artefacts and reference calls.',
       rails: { hie: [], eesg: [], gic: false }, agents: ['Sales', 'Compliance'],
@@ -1132,10 +1180,10 @@
     if (/readmiss|transition|window|discharge|30/.test(s)) return A('Discharge writes to the HIE and starts a 30-day clock. ' + inWindow().length + ' patients are in the window, ' + inWindow().filter(function (d) { return d.risk === 'high'; }).length + ' at high risk. A decline routes them back here, not the ED. ' + avoided() + ' have cleared the window so far, a utilization indicator that does not tokenize. The rate is ' + readmitRate().toFixed(1) + '%.', [{ label: 'Open Transitions', kind: 'evidence', q: 'Who is high risk?' }]);
     if (/risk|high/.test(s)) { var h = inWindow().filter(function (d) { return d.risk === 'high'; }); return A(h.length ? h.map(function (d) { return d.patient + ' (day ' + dayIn(d) + ')'; }).join(', ') + ' ' + (h.length === 1 ? 'is' : 'are') + ' at high readmission risk. Home health flagged a decline. My read: bring them back to the facility, not the ED. A clinician decides.' : 'No one is at high risk in the window right now.', [{ label: 'Route to facility', reply: 'Readmission routed to the facility, not the ED. A clinician confirms the bed.' }]); }
     if (/full|occup|bed|census/.test(s)) return A('Occupancy is ' + Math.round(b.occ / b.total * 100) + '%, ' + b.occ + ' of ' + b.total + ' beds. ' + (b.total - b.occ) + ' free. Discharges ready today would free more and start their 30-day clocks.', []);
-    if (/staff|ratio|night|five.?star/.test(s)) return A('Night ratio is 1:6.8, below target; day and evening are inside band. For a nursing facility this is the Five-Star staffing measure, so it moves the rating. I would pull one agency nurse to nights. A manager signs the roster.', [{ label: 'Adjust roster', reply: 'One agency nurse moved to nights. The manager confirms the shift.' }]);
+    if (/staff|ratio|night|five.?star/.test(s)) return A('Night ratio is 1:6.8, below target; day and evening are inside band. For a nursing facility this is the staffing standard, so it moves the standing of the facility. I would pull one agency nurse to nights. A manager signs the roster.', [{ label: 'Adjust roster', reply: 'One agency nurse moved to nights. The manager confirms the shift.' }]);
     if (/eesg|framework|position|verified/.test(s)) { var mets = collectEESG(), v = mets.filter(function (x) { return x.status === 'Verified'; }).length; return A('Across ' + enabledMods().length + ' enabled modules, ' + mets.length + ' EESG metrics emit, ' + v + ' Verified. The weak spots are out-of-pocket share and the night staffing ratio. Turn on more modules and the position fills in; it is generated, not written.', [{ label: 'Open EESG', kind: 'evidence', q: 'What is not verified?' }]); }
     if (/capital|gic|commons|raise|fund/.test(s)) return A('You raise against verified health outcomes: ' + outcomeVerifiedCount() + ' records pass all five tests (baseline, intervention link, follow-up, independent record, meaningful change), published only in anonymised cohorts of ' + MIN_COHORT + ' or more. Staying out of hospital is an indicator, not an outcome, and does not tokenize. Nothing unverified posts.', [{ label: 'Publish to GIC', reply: 'Verified cohorts staged for the Commons. A signatory approves it.' }]);
-    if (/library|turn on|module|nursing|configure/.test(s)) return A('A skilled nursing facility runs Command, Intake, Flow, Transitions, Staffing, MDS assessments, Quality, Medication, Accreditation, Orders, Revenue cycle, Finance, Environment, plus the EESG and GIC rails. No ED, no theatre. A hospital adds those two; residential care drops assessments depth. Same code, different profile.', [{ label: 'Open the library', kind: 'evidence', q: 'What should a nursing home turn on?' }]);
+    if (/library|turn on|module|nursing|configure/.test(s)) return A('A skilled nursing facility runs Command, Intake, Flow, Transitions, Staffing, Assessments, Quality, Medication, Accreditation, Orders, Revenue cycle, Finance, Environment, plus the EESG and GIC rails. No ED, no theatre. A hospital adds those two; residential care drops assessments depth. Same code, different profile.', [{ label: 'Open the library', kind: 'evidence', q: 'What should a nursing home turn on?' }]);
     if (/intake|referral|waiting/.test(s)) { var inc = incoming(); return A(inc.length ? inc.length + ' referrals are waiting from Bridge, field-screened. Admitting writes an ADMISSION to the HIE and the bed count updates everywhere.' : 'No referrals waiting. They arrive live from Bridge over the HIE.', []); }
     if (/afford|out.?of.?pocket|billing/.test(s)) return A('Out-of-pocket share is 31%, flagged Inconsistent until the payer reconciliation in Shield closes. The facility cannot upgrade it by assertion; a matched claim does. Under ' + cur.cfg.payment + ' the claim ties to real admission and discharge events.', []);
     if (/environ|carbon|waste|water|energy/.test(s)) return A('Energy is 58 kWh per bed-day, water 410 L, medical waste 64% recycled, carbon 8% over target. Anaesthetic gases and single-use plastics are the overlooked lines. Each is an EESG emitter and a candidate for the carbon line on the Commons.', []);
@@ -1145,7 +1193,7 @@
     if (/coexist|overlay|migration|ride|replace|rip/.test(s)) return A('Apex rides on top. It does not replace your EHR. The FHIR overlay reads from your system of record; your EHR is unchanged. Go-live is 4 to 6 weeks, no migration. If you remove the connection, your EHR is exactly as it was. Most facilities start and stay at Phase 1.', [{ label: 'Open Coexistence', kind: 'evidence', q: 'show coexistence' }]);
     if (/adopt|scribe|documentation time|click|nps/.test(s)) return A('Those adoption figures are illustrative targets, not measurements. Once clinicians use the product, each is computed from real usage data: session logs, edit distance between the AI draft and the signed note, and surveys at 30, 60 and 90 days.', [{ label: 'Open Adoption', kind: 'evidence', q: 'show adoption' }]);
     if (/multi.?facility|system view|roll.?up|whole.?person|cross.?setting/.test(s)) return A('Three facilities on one record: Hospital (180 beds, 82% occupancy), SNF (90 beds, 87%), Residential (60 beds, 80%). One patient, one record, across settings. The discharge opens a window; the SNF picks up the same chart; Bridge continues in the community; the patient sees it in Nova.', [{ label: 'Open System View', kind: 'evidence', q: 'show system view' }]);
-    if (/roi|return|payback|hrrp|penalty|financial case|value driver/.test(s)) return A('The ROI page is a projection from illustrative assumptions, with every driver listed so the buyer can replace it with their own volumes and costs. The HRRP framing is a US-market example. The point of the page is that no figure is a black box.', [{ label: 'Open ROI', kind: 'evidence', q: 'show ROI' }]);
+    if (/roi|return|payback|hrrp|penalty|financial case|value driver/.test(s)) return A('The ROI page is a projection from illustrative assumptions, with every driver listed so the buyer can replace it with their own volumes and costs. The readmission-penalty driver appears only under the US pack. The point of the page is that no figure is a black box.', [{ label: 'Open ROI', kind: 'evidence', q: 'show ROI' }]);
     if (/case study|reference|analyst|proof|comparable/.test(s)) return A('Every reference on that page is a placeholder or a target. No case study, analyst rating or certificate is held yet, so none is marked Verified. Each becomes Verified when the real record is attached.', [{ label: 'Open References', kind: 'evidence', q: 'show references' }]);
     return A('I read that from ' + cur.name + '\'s own records on the HIE. Ask me about readmissions and the 30-day window, occupancy, staffing, quality, the EESG position or the capital ask. I advise; a licensed clinician makes every clinical call.');
   }

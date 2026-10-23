@@ -1,5 +1,5 @@
 /*
- * Qäre Health — shared UI helpers for every app shell.
+ * Qäre Health: shared UI helpers for every app shell.
  * Depends on assets/exchange.js and assets/qare.css. No em dashes.
  */
 (function (global) {
@@ -32,7 +32,7 @@
     var logo = (typeof window !== 'undefined' && window.__QARE_LOGO__) ? window.__QARE_LOGO__ : '../../assets/brand/qare-wordmark.png';
     var role = opts.role ? '<span class="rolechip">' + esc(opts.role) + '</span>' : '';
     var badge = opts.trust === false ? '' :
-      '<button class="trustbadge" data-mod="compliance" title="Security and compliance posture"><span class="shield"></span>' + esc(opts.trustLabel || 'Secure. HIPAA') + '</button>';
+      '<button class="trustbadge" data-mod="compliance" title="Security and compliance posture"><span class="shield"></span>' + esc(opts.trustLabel || Trust.badgeLabel()) + '</button>';
     return '' +
       '<header class="qbar">' +
         '<a href="../../index.html" class="wordmark" title="All Qäre apps"><img src="' + logo + '" alt="Qäre" class="wm-img"> Health</a>' +
@@ -135,7 +135,7 @@
     });
   }
 
-  /* IRIS — Qare's public copilot. One docked, collapsible panel per app, kept
+  /* IRIS: Qare's public copilot. One docked, collapsible panel per app, kept
      outside the app's re-rendered root so the conversation survives re-renders.
      Florence stays internal and is never shown. IRIS advises; a licensed person
      decides every clinical, quality and regulatory call. */
@@ -278,37 +278,47 @@
   var Trust = (function () {
     // status: 'certified' | 'compliant' | 'attested' | 'ontrack' | 'monitored'
     var FRAMEWORKS = [
-      { id: 'HIPAA', name: 'HIPAA Privacy & Security', scope: 'US health data', status: 'compliant', sectors: ['provider', 'pharma', 'payer'], note: 'Privacy, Security and Breach Notification rules; BAAs in place' },
-      { id: 'HITECH', name: 'HITECH Act', scope: 'US breach / EHR', status: 'compliant', sectors: ['provider', 'payer'], note: 'Breach notification and audit controls' },
-      { id: 'GDPR', name: 'GDPR', scope: 'EU personal data', status: 'compliant', sectors: ['provider', 'pharma', 'payer'], note: 'Lawful basis, DSAR and erasure workflows' },
+      { id: 'HIPAA', name: 'HIPAA Privacy & Security', scope: 'US health data', status: 'compliant', packs: ['US'], sectors: ['provider', 'pharma', 'payer'], note: 'Privacy, Security and Breach Notification rules; business associate agreements' },
+      { id: 'HITECH', name: 'HITECH Act', scope: 'US breach / EHR', status: 'compliant', packs: ['US'], sectors: ['provider', 'payer'], note: 'Breach notification and audit controls' },
       { id: 'ISO 27001', name: 'ISO/IEC 27001', scope: 'Information security', status: 'certified', sectors: ['provider', 'pharma', 'payer'], note: 'ISMS certified, annual surveillance audit' },
       { id: 'ISO 27701', name: 'ISO/IEC 27701', scope: 'Privacy information', status: 'certified', sectors: ['provider', 'pharma', 'payer'], note: 'Privacy extension to the ISMS' },
       { id: 'SOC 2 II', name: 'SOC 2 Type II', scope: 'Trust services', status: 'attested', sectors: ['provider', 'pharma', 'payer'], note: 'Security, availability, confidentiality; 12-month report' },
       { id: 'ISO 9001', name: 'ISO 9001', scope: 'Quality management', status: 'certified', sectors: ['pharma', 'provider'], note: 'Quality management system' },
       { id: 'ISO 13485', name: 'ISO 13485', scope: 'Medical device QMS', status: 'ontrack', progress: 88, sectors: ['pharma'], note: 'Stage 2 audit scheduled; 88% of controls evidenced' },
-      { id: '21 CFR 11', name: '21 CFR Part 11', scope: 'FDA e-records / e-signatures', status: 'compliant', sectors: ['pharma'], note: 'Electronic records, audit trails and validated e-signatures' },
+      { id: '21 CFR 11', name: '21 CFR Part 11', scope: 'FDA e-records / e-signatures', status: 'compliant', packs: ['US'], sectors: ['pharma'], note: 'Electronic records, audit trails and validated e-signatures' },
       { id: 'Annex 11', name: 'EU GMP Annex 11', scope: 'Computerised systems', status: 'compliant', sectors: ['pharma'], note: 'Computerised system validation (CSV)' },
-      { id: 'DSCSA', name: 'DSCSA', scope: 'US drug track & trace', status: 'compliant', sectors: ['pharma'], note: 'Unit-level serialisation and verification' },
+      { id: 'DSCSA', name: 'DSCSA', scope: 'US drug track & trace', status: 'compliant', packs: ['US'], sectors: ['pharma'], note: 'Unit-level serialisation and verification' },
       { id: 'ISO 42001', name: 'ISO/IEC 42001', scope: 'AI management', status: 'ontrack', progress: 72, sectors: ['provider', 'pharma', 'payer'], note: 'AI management system for Telos governance; 72% implemented' }
     ];
-    var SECURITY = [
-      ['Encryption at rest', 'AES-256, per-tenant keys', 'ok'],
-      ['Encryption in transit', 'TLS 1.3, mTLS between services', 'ok'],
-      ['Access control', 'RBAC + ABAC, least privilege', 'ok'],
-      ['Authentication', 'SSO (SAML / OIDC), MFA enforced', 'ok'],
-      ['Audit trail', 'Immutable, every record access logged', 'ok'],
-      ['De-identification', 'Safe Harbor + expert determination', 'ok'],
-      ['Consent', 'Double-key, revocable, enforced per request', 'ok'],
-      ['Key management', 'HSM-backed, automatic rotation', 'ok'],
-      ['Data residency', 'Region-pinned, no cross-border egress', 'ok'],
-      ['Threat monitoring', '24/7 SIEM, anomaly detection', 'ok'],
-      ['Penetration testing', 'Independent, annual + continuous scan', 'ok'],
-      ['Backup & DR', 'RPO 15 min, RTO 60 min, tested quarterly', 'ok']
-    ];
+    function curPack() { var X = (typeof window !== 'undefined') && window.QareExchange; return (X && X.pack) ? X.pack() : null; }
+    function securityRows() {
+      var pk = curPack();
+      return [
+        ['Encryption at rest', 'AES-256, per-tenant keys'],
+        ['Encryption in transit', 'TLS 1.3, mTLS between services'],
+        ['Access control', 'RBAC + ABAC, least privilege'],
+        ['Authentication', 'SSO (SAML / OIDC), MFA enforced'],
+        ['Audit trail', 'Hash-linked, every record access logged'],
+        ['De-identification', pk ? 'Aggregate only, cohort floor of ' + pk.minCohort : 'Aggregate only, cohort floor'],
+        ['Consent', 'Double-key, revocable, enforced per request'],
+        ['Key management', 'HSM-backed, automatic rotation'],
+        ['Data residency', pk ? pk.crossBorder : 'Region-pinned'],
+        ['Threat monitoring', '24/7 SIEM, anomaly detection'],
+        ['Penetration testing', 'Independent, annual + continuous scan'],
+        ['Backup & DR', 'RPO 15 min, RTO 60 min, tested quarterly']
+      ];
+    }
+    function localFramework() {
+      var pk = curPack(); if (!pk) return [];
+      return [{ id: 'LOCAL', name: 'Local data-protection law: ' + pk.country, scope: pk.country + ' pack', status: 'ontrack', progress: 0, sectors: ['provider', 'pharma', 'payer'], note: pk.law }];
+    }
     var SLABEL = { certified: 'Certified', compliant: 'Compliant', attested: 'Attested', ontrack: 'On track', monitored: 'Monitored' };
     var SCLASS = { certified: 'claimed', compliant: 'claimed', attested: 'claimed', ontrack: 'claimed', monitored: 'claimed' };
-    function forSector(sector) { return FRAMEWORKS.filter(function (f) { return !sector || f.sectors.indexOf(sector) >= 0; }); }
-    function badgeLabel(sector) { return sector === 'pharma' ? 'Secure. 21 CFR 11' : 'Secure. HIPAA'; }
+    function forSector(sector) {
+      var pk = curPack();
+      return FRAMEWORKS.filter(function (f) { return (!sector || f.sectors.indexOf(sector) >= 0) && (!f.packs || (pk && f.packs.indexOf(pk.id) >= 0)); }).concat(localFramework());
+    }
+    function badgeLabel() { var pk = curPack(); return pk ? 'Pack: ' + pk.country : 'Secure'; }
     function render(opts) {
       opts = opts || {}; var sector = opts.sector, fw = forSector(sector);
       var online = fw.filter(function (f) { return f.status !== 'ontrack'; }).length;
@@ -319,7 +329,7 @@
           '<div class="sub2">' + esc(f.scope) + '</div><div class="sub2" style="margin-top:6px">' + esc(f.note) + '</div>' + bar + '</div>';
       }).join('') + '</div>';
       var sec = '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Security engine, live</div><div class="seclist">' +
-        SECURITY.map(function (s) { return '<div class="secrow"><span class="sev ok"></span><div style="flex:1"><div style="font-size:13px;font-weight:600">' + esc(s[0]) + '</div><div class="sub2">' + esc(s[1]) + '</div></div><span class="chip claimed">specified</span></div>'; }).join('') +
+        securityRows().map(function (s) { return '<div class="secrow"><span class="sev ok"></span><div style="flex:1"><div style="font-size:13px;font-weight:600">' + esc(s[0]) + '</div><div class="sub2">' + esc(s[1]) + '</div></div><span class="chip claimed">specified</span></div>'; }).join('') +
         '</div></div>';
       return illustrative('Compliance statuses are asserted in this demonstration. Each becomes Verified only when a real audit record is attached.') + head + grid + sec +
         '<p class="provenance">statuses are asserted until an audit record is attached; only then do they emit as Verified to the Governance pillar</p>';
@@ -328,15 +338,15 @@
       var fw = forSector(sector), live = fw.filter(function (f) { return f.status !== 'ontrack'; }).length;
       return [
         { pillar: 'Governance', front: 'Care quality and safety', measure: 'Compliance frameworks live', value: live + ' of ' + fw.length, status: 'Claimed' },
-        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Security controls active', value: SECURITY.length + ' of ' + SECURITY.length, status: 'Claimed' }
+        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Security controls active', value: securityRows().length + ' of ' + securityRows().length, status: 'Claimed' }
       ];
     }
-    return { FRAMEWORKS: FRAMEWORKS, SECURITY: SECURITY, forSector: forSector, render: render, badgeLabel: badgeLabel, eesgMetrics: eesgMetrics };
+    return { FRAMEWORKS: FRAMEWORKS, securityRows: securityRows, curPack: curPack, forSector: forSector, render: render, badgeLabel: badgeLabel, eesgMetrics: eesgMetrics };
   })();
 
   function legalFooter(opts) {
     opts = opts || {};
-    var reg = opts.sector === 'pharma' ? '21 CFR Part 11, EU GMP Annex 11' : 'HIPAA, HITECH';
+    var pk = Trust.curPack(); var reg = pk ? 'Policy pack: ' + pk.country : 'Data governance';
     return '<footer class="legalbar">' +
       '<span class="lb-co">&copy; 2026 Qäre Health</span>' +
       '<span>A Lexington Group company</span>' +
