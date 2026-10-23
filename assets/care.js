@@ -188,14 +188,15 @@
     return { ok: true, event: ev, referralId: ev.payload.referralId };
   };
   care.referrals = function (filter) {
-    var resp = {}, adm = {}, notice = {}, dis = {};
+    var resp = {}, adm = {}, notice = {}, dis = {}, dec = {};
+    X.eventsOfType('PATIENT_DECISION').forEach(function (e) { dec[e.payload.referralId] = Object.assign(clone(e.payload), { ts: e.ts }); });
     X.eventsOfType('DISCHARGE_COMPLETED').forEach(function (e) { dis[e.payload.referralId] = Object.assign(clone(e.payload), { ts: e.ts }); });
     X.eventsOfType('REFERRAL_RESPONSE').forEach(function (e) { resp[e.payload.referralId] = Object.assign(clone(e.payload), { ts: e.ts }); });
     X.eventsOfType('HOSPITAL_NOTICE').forEach(function (e) { notice[e.payload.referralId] = Object.assign(clone(e.payload), { ts: e.ts }); });
     X.eventsOfType('ADMISSION').forEach(function (e) { if (e.payload.referralId) adm[e.payload.referralId] = Object.assign(clone(e.payload), { ts: e.ts }); });
     return X.eventsOfType('CLINIC_REFERRAL').map(function (e) {
-      var p = clone(e.payload); p.ts = e.ts; p.response = resp[p.referralId] || null; p.notice = notice[p.referralId] || null; p.admission = adm[p.referralId] || null; p.discharge = dis[p.referralId] || null;
-      p.status = p.discharge ? 'discharged' : p.admission ? 'admitted' : p.response ? p.response.decision : 'sent'; return p;
+      var p = clone(e.payload); p.ts = e.ts; p.response = resp[p.referralId] || null; p.notice = notice[p.referralId] || null; p.admission = adm[p.referralId] || null; p.discharge = dis[p.referralId] || null; p.patientDecision = dec[p.referralId] || null;
+      p.status = p.discharge ? 'discharged' : p.admission ? 'admitted' : (p.patientDecision && p.patientDecision.decision === 'declined') ? 'patient-declined' : p.response ? p.response.decision : 'sent'; return p;
     }).filter(function (p) { return !filter || ((!filter.visitId || p.visitId === filter.visitId) && (!filter.toOrgId || p.toOrgId === filter.toOrgId) && (!filter.patientId || p.patientId === filter.patientId)); });
   };
   care.respondReferral = function (o) {
@@ -216,6 +217,48 @@
     var r = care.referrals().filter(function (x) { return x.referralId === referralId; })[0]; if (!r || r.status !== 'accepted') return null;
     return X.append('ADMISSION', { household: 'HH-' + r.patientId, patientId: r.patientId, patientName: r.patientName, orgId: orgId, referralId: referralId, unit: r.response.unit }, actor('apex', personaId));
   };
+
+
+  /* ---------- the patient's own choices (dignity of risk) ---------- */
+
+  // A patient may decline a referral. The reason is optional: it is their decision,
+  // not a form to justify. The clinician sees it as an informed choice, not a failure.
+  care.decideReferral = function (o) {
+    var r = care.referrals({ patientId: o.patientId }).filter(function (x) { return x.referralId === o.referralId; })[0];
+    if (!r) return { ok: false, reason: 'No such referral on your record.' };
+    if (r.status !== 'sent' && r.status !== 'accepted') return { ok: false, reason: 'This referral can no longer be declined here.' };
+    var ev = X.append('PATIENT_DECISION', { referralId: r.referralId, patientId: r.patientId, patientName: r.patientName, decision: 'declined', note: o.note || '', informed: true, toOrgName: r.toOrgName, fromOrgId: r.fromOrgId, visitId: r.visitId }, actor('nova', r.patientId));
+    return { ok: true, event: ev };
+  };
+  care.reconsiderReferral = function (o) {
+    var r = care.referrals({ patientId: o.patientId }).filter(function (x) { return x.referralId === o.referralId; })[0];
+    if (!r || r.status !== 'patient-declined') return { ok: false };
+    var ev = X.append('PATIENT_DECISION', { referralId: r.referralId, patientId: r.patientId, patientName: r.patientName, decision: 'reconsidered', note: '', informed: true, toOrgName: r.toOrgName, fromOrgId: r.fromOrgId, visitId: r.visitId }, actor('nova', r.patientId));
+    return { ok: true, event: ev };
+  };
+
+  // Medicine-maker context (indication, age band, sex) is a separate opt-in from care.
+  care.makerContext = function (patientId) { var st = X.consent.state(patientId)['secondary|maker']; return !!(st && st.active); };
+  care.setMakerContext = function (patientId, on) {
+    return on ? X.consent.grant({ patientId: patientId, flow: 'secondary', recipient: 'maker', scope: ['supply-safety'], by: 'patient, in Nova' }, actor('nova', patientId))
+              : X.consent.revoke({ patientId: patientId, flow: 'secondary', recipient: 'maker', by: 'patient, in Nova' }, actor('nova', patientId));
+  };
+
+  care.pharmacies = function () { return X.ORGS.filter(function (o) { return o.sector === 'pharmacy'; }); };
+
+  // Everything on the record that belongs to this patient, as FHIR, for the patient to keep.
+  care.patientBundle = function (patientId) {
+    var entries = [];
+    var rec = X.registry && X.registry.record ? X.registry.record(patientId) : null;
+    if (rec && rec.mrn && X.fhir.patient) entries.push({ fullUrl: 'urn:uuid:patient-' + patientId, resource: X.fhir.patient(rec) });
+    else if (X.PATIENT && X.PATIENT.id === patientId) entries.push({ fullUrl: 'urn:uuid:patient-' + patientId, resource: { resourceType: 'Patient', id: patientId, identifier: [{ system: 'https://qare.health/mrn', value: X.PATIENT.mrn }], name: [{ text: X.PATIENT.name }], gender: X.PATIENT.sex === 'M' ? 'male' : 'female' } });
+    X.events().forEach(function (e) {
+      if (!e.payload || e.payload.patientId !== patientId) return;
+      var r = X.fhir.resource(e); if (r) entries.push({ fullUrl: 'urn:uuid:' + e.id, resource: r });
+    });
+    return { resourceType: 'Bundle', type: 'collection', timestamp: new Date().toISOString(), total: entries.length, entry: entries };
+  };
+  care.recordExport = function (patientId, n) { return X.append('RECORD_EXPORTED', { patientId: patientId, resources: n, format: 'FHIR R4 Bundle' }, actor('nova', patientId)); };
 
   /* ---------- payments (conceptual: no money moves) ---------- */
 

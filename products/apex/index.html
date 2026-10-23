@@ -258,7 +258,7 @@
     var o = receivingOrg(); if (!o) return '';
     var list = clinicRefs();
     var others = X.orgsFor('apex').filter(function (x) { return x.id !== o.id; });
-    var chip = { sent: '<span class="chip claimed">awaiting your reply</span>', accepted: '<span class="chip verified">accepted</span>', declined: '<span class="chip inconsistent">declined</span>', admitted: '<span class="chip verified">admitted</span>', discharged: '<span class="chip verified">discharged</span>' };
+    var chip = { sent: '<span class="chip claimed">awaiting your reply</span>', accepted: '<span class="chip verified">accepted</span>', declined: '<span class="chip inconsistent">declined</span>', 'patient-declined': '<span class="chip claimed">patient chose not to come</span>', admitted: '<span class="chip verified">admitted</span>', discharged: '<span class="chip verified">discharged</span>' };
     var post = X.orgsFor('bridge');
     return '<div class="card shadow" style="margin-bottom:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:4px">Referrals from clinics</div>' +
       '<div class="refnote" style="margin-bottom:10px">Sent by a doctor in Pulse with the reason, current medicines and results. You accept or decline. A decline goes back to the doctor with your reason.</div>' +
