@@ -260,6 +260,46 @@
   };
   care.recordExport = function (patientId, n) { return X.append('RECORD_EXPORTED', { patientId: patientId, resources: n, format: 'FHIR R4 Bundle' }, actor('nova', patientId)); };
 
+
+  /* ---------- public health: two flows, never mixed ---------- */
+  // Notifiable conditions (the pack's list) are reported with identity as a legal duty,
+  // minimum necessary, no opt-out, and the patient is told. Everything else that feeds
+  // surveillance is an anonymous count with no patient identifier at all.
+
+  care.SYNDROMES = ['Hypertension', 'Type 2 diabetes', 'Respiratory infection', 'Diarrhoeal disease'];
+  care.PH_RECIPIENT = 'ORG-MOH-LRG';
+  care.notifiableList = function () { return (X.pack().notifiable || []).map(function (n) { return { condition: n[0], timeliness: n[1] }; }); };
+  care.isNotifiable = function (condition) { return care.notifiableList().filter(function (n) { return n.condition === condition; })[0] || null; };
+  function isoWeek(ts) { var d = new Date(ts); d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7)); var y0 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1)); return d.getUTCFullYear() + '-W' + String(Math.ceil(((d - y0) / 86400000 + 1) / 7)).padStart(2, '0'); }
+
+  care.diagnose = function (o) {
+    var v = care.visit(o.visitId); if (!v) return { ok: false, reason: 'Open a visit first.' };
+    if (!o.condition) return { ok: false, reason: 'Choose a condition.' };
+    var nt = care.isNotifiable(o.condition), clinic = X.org(v.clinicId), a = actor('pulse', o.personaId);
+    X.append('DIAGNOSIS_RECORDED', { visitId: v.visitId, patientId: v.patientId, patientName: v.patientName, condition: o.condition, notifiable: !!nt, clinician: v.clinician, orgId: v.clinicId }, a);
+    if (nt) {
+      var d = X.access({ patientId: v.patientId, flow: 'mandated', recipient: care.PH_RECIPIENT, purpose: 'notifiable disease report' }, a);
+      var ev = X.append('NOTIFIABLE_CASE', {
+        caseId: uid('CASE'), condition: o.condition, timeliness: nt.timeliness, patientId: v.patientId, patientName: v.patientName, ageBand: ageBand(v.patientId),
+        sex: v.patientId === 'PT-AMARA' ? 'F' : 'not recorded', location: v.patientId === 'PT-AMARA' ? X.PATIENT.location : (clinic ? clinic.region : ''),
+        reporterOrgId: v.clinicId, reporterName: v.clinicName, clinician: v.clinician, basis: d.basis, pack: X.pack().id,
+        minimumNecessary: ['name', 'age band', 'sex', 'location', 'condition', 'reporting clinic']
+      }, a);
+      return { ok: true, kind: 'notifiable', caseId: ev.payload.caseId, timeliness: nt.timeliness };
+    }
+    X.append('SURVEILLANCE_OBSERVATION', { condition: o.condition, region: clinic ? clinic.region : '', ageBand: ageBand(v.patientId), week: isoWeek(Date.now()) }, a);
+    return { ok: true, kind: 'surveillance' };
+  };
+  care.notifiableCases = function () { return X.eventsOfType('NOTIFIABLE_CASE').map(function (e) { var p = clone(e.payload); p.ts = e.ts; return p; }); };
+  // Aggregate counts. A cell below the pack's minimum is suppressed, so a small count cannot point at a person.
+  care.surveillance = function () {
+    var min = X.pack().minCohort || 5, m = {}, order = [];
+    function bump(cond, region) { if (!m[cond]) { m[cond] = { condition: cond, count: 0, regions: {}, notifiable: !!care.isNotifiable(cond) }; order.push(cond); } m[cond].count++; if (region) m[cond].regions[region] = true; }
+    X.eventsOfType('SURVEILLANCE_OBSERVATION').forEach(function (e) { bump(e.payload.condition, e.payload.region); });
+    X.eventsOfType('NOTIFIABLE_CASE').forEach(function (e) { bump(e.payload.condition, e.payload.location); });
+    return { min: min, rows: order.map(function (c) { var r = m[c]; return { condition: c, notifiable: r.notifiable, count: r.count, districts: Object.keys(r.regions).length, suppressed: r.count < min }; }) };
+  };
+
   /* ---------- payments (conceptual: no money moves) ---------- */
 
   care.TARIFF = { consult: { SMALL: 300, MEDIUM: 500, LARGE: 900 }, lab: { HBA1C: 450, 'BP-PANEL': 600, CREAT: 300 }, copay: { consult: 0.3, lab: 0.2, rx: 0.2 } };

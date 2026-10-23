@@ -295,6 +295,7 @@
     if (ev.type === 'LAB_RESULT' && p.patientId === pt.id) return { k: 'Prism', msg: 'A new result is on your record: ' + esc(p.testName) + '.' };
     if (ev.type === 'HOSPITAL_NOTICE' && p.patientId === pt.id) return { k: 'Hospital', msg: esc(p.toOrgName) + ' will see you: ' + esc(p.unit) + ', ' + esc(p.expectedBy.toLowerCase()) + '. See My care plan.' };
     if (ev.type === 'REFERRAL_RESPONSE' && p.decision === 'declined') return { k: 'Hospital', msg: 'The hospital could not take you now. Your doctor will arrange another way.' };
+    if (ev.type === 'NOTIFIABLE_CASE' && p.patientId === pt.id) return { k: 'Public health', msg: 'Your doctor reported ' + esc(p.condition) + ' to the health ministry, as the law requires. See Who saw my record.' };
     if (ev.type === 'DISCHARGE_COMPLETED' && p.patientId === pt.id) return { k: 'Hospital', msg: 'You are going home. Your plan is in My care plan.' };
     return null;
   });

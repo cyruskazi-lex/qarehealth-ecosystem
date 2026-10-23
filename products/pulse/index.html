@@ -154,6 +154,14 @@
       '<div style="margin-top:14px"><button class="btn btn-primary" data-begin' + (vq.confirmed ? '' : ' disabled') + '>Start visit</button></div>' + (vq.msg ? '<div class="sub" style="margin-top:10px;color:var(--inconsistent)">' + esc(vq.msg) + '</div>' : '') + '</div>' +
       prov('a visit is a VISIT_STARTED event with the identity method recorded; a treatment access decision is written to the audit trail');
   }
+  function diagnosisBox(v) {
+    var nots = C.notifiableList(), done = X.eventsOfType('DIAGNOSIS_RECORDED').filter(function (e) { return e.payload.visitId === v.visitId; });
+    var opts = '<optgroup label="Notifiable in ' + esc(X.pack().country) + '">' + nots.map(function (n) { return '<option>' + esc(n.condition) + '</option>'; }).join('') + '</optgroup><optgroup label="Other conditions">' + C.SYNDROMES.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</optgroup>';
+    return '<div style="margin-top:14px;border-top:1px solid var(--hairline);padding-top:12px"><div class="sub2" style="margin-bottom:6px">Diagnosis</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label for="dx-cond" class="sub2">Condition</label><select id="dx-cond" style="padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-family:var(--font-ui)">' + opts + '</select><button class="btn btn-ghost btn-sm" data-diagnose>Record diagnosis</button></div>' +
+      '<div class="sub2" style="margin-top:6px">A notifiable condition is reported to public health with the patient\'s name and place, as the law requires, and the patient is told. Any other condition adds only an anonymous count.</div>' +
+      (done.length ? '<div style="margin-top:8px">' + done.map(function (e) { return '<span class="chip ' + (e.payload.notifiable ? 'claimed' : 'verified') + '" style="margin-right:6px">' + esc(e.payload.condition) + (e.payload.notifiable ? ', reported' : ', counted') + '</span>'; }).join('') + '</div>' : '') + '</div>';
+  }
   function visitPanel(v) {
     var vit = C.observations(v.patientId, 'BP-SYS').filter(function (o) { return o.simDay === 0 && o.sourceOrgId === v.clinicId; });
     var orders = C.labOrders({ visitId: v.visitId }), rxs = X.prescriptions().filter(function (r) { return r.visitId === v.visitId; }), refs = C.referrals({ visitId: v.visitId });
@@ -172,6 +180,7 @@
       '<div class="rec"><span class="k">Pharmacy</span><span>' + esc(C.nominatedPharmacy(v.patientId).name) + ' <span class="sub2">(' + (C.nominatedPharmacy(v.patientId).source === 'patient' ? 'chosen by the patient' : 'default, ask the patient') + ')</span></span></div>' +
       '<div class="rec"><span class="k">Vitals</span><span>' + (vit.length ? esc(vit.map(function (o) { return o.value + ' ' + o.unit; }).join(', ')) : 'not recorded') + '</span></div>' +
       (v.status === 'open' ? '<div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px;flex-wrap:wrap"><div style="width:130px">' + fld('vt-sys', 'Systolic (mmHg)', '', 'e.g. 152') + '</div><div style="width:130px">' + fld('vt-dia', 'Diastolic', '', 'e.g. 96') + '</div><button class="btn btn-ghost btn-sm" data-vitals>Record vitals</button></div>' : '') +
+      (v.status === 'open' ? diagnosisBox(v) : '') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-primary btn-sm" data-mod="orders">Order a test</button><button class="btn btn-primary btn-sm" data-mod="prescribe">Prescribe</button><button class="btn btn-ghost btn-sm" data-mod="referrals">Refer</button><button class="btn btn-ghost btn-sm" data-mod="payments">Payments</button>' +
       (v.status === 'open' ? '<button class="btn btn-ghost btn-sm" data-close="' + esc(v.visitId) + '">Close visit</button>' : '<span class="chip unmeasured">closed</span>') + '</div></div>' +
       '<div class="card shadow">' + ctitle('Timeline') + '<div class="tl">' + tl.map(function (t) { return '<div class="it"><span class="sub2 mono">' + ago(t[0]) + '</span> ' + esc(t[1]) + '</div>'; }).join('') + '</div></div></div>' +
@@ -424,6 +433,12 @@
     var ak = a.getAttribute('data-ack'); if (ak) { C.acknowledge(ak, cur.id); return; }
     var oo = a.getAttribute('data-open-opinion');
     if (oo) { var sh = C.opinionShares({ toOrgId: cur.id }).filter(function (x) { return x.shareId === oo; })[0]; if (sh) { opened[oo] = C.opinionView(sh, cur.id, true); render(); } return; }
+    if (a.hasAttribute('data-diagnose')) {
+      var v0 = active(); if (!v0) return;
+      var rs0 = C.diagnose({ visitId: v0.visitId, condition: document.getElementById('dx-cond').value });
+      UI.toast(rs0.ok ? (rs0.kind === 'notifiable' ? 'Reported to public health' : 'Counted anonymously') : 'Not recorded', rs0.ok ? (rs0.kind === 'notifiable' ? 'A case report went to the health ministry (' + rs0.timeliness + '). The patient has been told.' : 'Only an anonymous count joins disease surveillance.') : rs0.reason);
+      return;
+    }
     if (a.hasAttribute('data-vitals')) {
       var av = active(), sy = parseFloat((document.getElementById('vt-sys') || {}).value);
       if (av && sy) { C.observe({ patientId: av.patientId, code: 'BP-SYS', value: sy, simDay: 0, sourceOrgId: cur.id, app: 'pulse', visitId: av.visitId, note: 'diastolic ' + ((document.getElementById('vt-dia') || {}).value || 'n/a') }); UI.toast('Recorded', 'Blood pressure is on the record as the baseline.'); }

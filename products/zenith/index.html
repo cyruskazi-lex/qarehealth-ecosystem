@@ -24,10 +24,11 @@
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
 <script src="../../assets/spine.js"></script>
+<script src="../../assets/care.js"></script>
 <script src="../../assets/app.js"></script>
 <script>
 (function () {
-  var X = window.QareExchange, UI = window.QareUI, esc = UI.esc;
+  var X = window.QareExchange, UI = window.QareUI, esc = UI.esc, C = X.care;
   UI.init('zenith');
   var orgs = X.orgsFor('zenith');
   var cur = X.org('ORG-MOH-LRG');
@@ -58,6 +59,7 @@
   var MODS = [
     { key: 'command', label: 'National command', ic: 'NC', group: 'Oversight' },
     { key: 'surveillance', label: 'Disease surveillance', ic: 'DS', group: 'Oversight' },
+    { key: 'rules', label: 'Reporting rules', ic: 'RR', group: 'Oversight' },
     { key: 'coverage', label: 'Coverage', ic: 'CV', group: 'Oversight' },
     { key: 'stockouts', label: 'Stockouts', ic: 'SO', group: 'Supply' },
     { key: 'facilities', label: 'Facility registry', ic: 'FR', group: 'System' },
@@ -90,10 +92,30 @@
         '</div></div>' + prov('reads every event type on the exchange and aggregates; posts nothing itself');
     }
     if (mod === 'surveillance') {
+      var live = C.surveillance();
       return head('Disease surveillance', 'Syndromic signal by condition, built from de-identified encounters and lab results across the country.') +
+        '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:6px">Counted on this exchange now</div><div class="refnote" style="font-size:12px;color:var(--mid);margin-bottom:8px">Anonymous counts from diagnoses recorded in Pulse. A count under ' + live.min + ' is hidden, so a small number cannot point at a person.</div>' +
+        (live.rows.length ? '<table class="qt"><thead><tr><th>Condition</th><th>Type</th><th class="num">Cases</th><th class="num">Districts</th></tr></thead><tbody>' + live.rows.map(function (r) { return '<tr><td class="nm">' + esc(r.condition) + '</td><td>' + (r.notifiable ? '<span class="chip claimed">notifiable</span>' : '<span class="chip">syndromic</span>') + '</td><td class="num">' + (r.suppressed ? 'under ' + live.min : r.count) + '</td><td class="num">' + (r.suppressed ? '-' : r.districts) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="sub">No diagnoses recorded yet. In Pulse, open a visit and record a diagnosis; it counts here live.</div>') + '</div>' +
+        UI.illustrative('The national table below is a placeholder baseline for the demonstration. It is replaced by counts like those above as facilities connect.') +
         '<div class="qt-wrap"><table class="qt"><thead><tr><th>Condition</th><th>Trend</th><th class="num">Districts</th><th class="num">Cases, 7d</th><th class="num">Change</th></tr></thead><tbody>' +
         DISEASES.map(function (d) { var up = d.trend === 'rising'; return '<tr><td class="nm">' + esc(d.name) + '</td><td>' + (up ? '<span class="chip inconsistent">rising</span>' : '<span class="chip verified">stable</span>') + '</td><td class="num">' + d.districts + '</td><td class="num">' + d.cases.toLocaleString() + '</td><td class="num" style="color:' + (up ? 'var(--inconsistent)' : 'var(--mid)') + '">' + esc(d.change) + '</td></tr>'; }).join('') +
         '</tbody></table></div>' + prov('a rising signal across many districts triggers a public-health review, not a single-clinic alert');
+    }
+    if (mod === 'rules') {
+      var pk = X.pack(), nots = C.notifiableList(), cases = C.notifiableCases().slice().reverse(), flow = pk.flows.mandated || {};
+      return head('Reporting rules', 'Two kinds of public-health data move, and they are never mixed. A named case report for a notifiable disease is a legal duty. Everything else is an anonymous count.') +
+        '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Notifiable disease report</div>' +
+        '<div class="rec"><span class="k">What it is</span><span>A case report, with identity</span></div><div class="rec"><span class="k">Basis</span><span>' + esc(flow.basis || 'Legal obligation') + '</span></div>' +
+        '<div class="rec"><span class="k">Patient opt-out</span><span>None. The patient is told.</span></div><div class="rec"><span class="k">What is sent</span><span>Name, age band, sex, location, condition, reporting clinic. Nothing else from the record.</span></div></div>' +
+        '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Surveillance count</div>' +
+        '<div class="rec"><span class="k">What it is</span><span>An anonymous count by condition and place</span></div><div class="rec"><span class="k">Basis</span><span>Public-health surveillance, aggregate</span></div>' +
+        '<div class="rec"><span class="k">Identity</span><span>No patient identifier is ever attached</span></div><div class="rec"><span class="k">Small numbers</span><span>Hidden below ' + pk.minCohort + '</span></div></div></div>' +
+        '<div class="qt-wrap" style="margin-top:14px"><table class="qt"><thead><tr><th>Condition on the ' + esc(pk.country) + ' list</th><th>Report within</th><th>Flow</th></tr></thead><tbody>' +
+        nots.map(function (n) { return '<tr><td class="nm">' + esc(n.condition) + '</td><td>' + esc(n.timeliness) + '</td><td><span class="chip claimed">named case report</span></td></tr>'; }).join('') +
+        C.SYNDROMES.map(function (c) { return '<tr><td class="nm">' + esc(c) + '</td><td>weekly counts</td><td><span class="chip">anonymous count</span></td></tr>'; }).join('') + '</tbody></table></div>' +
+        '<div class="card shadow" style="margin-top:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Case reports received</div>' +
+        (cases.length ? '<table class="qt"><thead><tr><th>Case</th><th>Condition</th><th>Person</th><th>Where</th><th>Reported by</th></tr></thead><tbody>' + cases.map(function (c) { return '<tr><td class="mono">' + esc(c.caseId) + '</td><td class="nm">' + esc(c.condition) + '<div class="sub2">' + esc(c.timeliness) + '</div></td><td>' + esc(c.patientName) + '<div class="sub2">' + esc(c.ageBand) + ', ' + esc(c.sex) + '</div></td><td>' + esc(c.location) + '</td><td>' + esc(c.reporterName) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="sub">None yet. When a clinician records a notifiable condition in Pulse, the case report arrives here and the patient sees it in their access log.</div>') + '</div>' +
+        prov('rules come from the active jurisdiction pack, a draft summary and not legal advice; every report is also an entry in the patient\'s access log');
     }
     if (mod === 'coverage') {
       return head('Coverage', 'Programme coverage against national targets. Two programmes are below target.') +
@@ -133,7 +155,7 @@
     }
     if (mod === 'governance') {
       return head('Data governance', 'The rules that keep the national view de-identified and the exchange trustworthy.') +
-        '<div class="cards3">' + [['De-identification', 'All ministry views are aggregate; no patient or provider identity is ever shown.'], ['Data residency', 'Records stay in country; only verified aggregates reach the Commons.'], ['Access control', 'Role-based, enforced at the exchange, audited in Core.']].map(function (c) {
+        '<div class="cards3">' + [['De-identification', 'Dashboards and counts are aggregate with small numbers hidden. The one exception is a notifiable disease case report, which names the person because the law requires it, shares the minimum, and is logged to the patient.'], ['Data residency', 'Records stay in country; only verified aggregates reach the Commons.'], ['Access control', 'Role-based, enforced at the exchange, audited in Core.']].map(function (c) {
           return '<div class="card shadow"><div style="font-weight:700;font-size:14px;margin-bottom:6px">' + esc(c[0]) + '</div><div class="sub" style="font-size:13px">' + esc(c[1]) + '</div></div>';
         }).join('') + '</div>' + prov('neutrality and privacy are structural; the ministry sees the picture, never the person');
     }
