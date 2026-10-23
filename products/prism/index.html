@@ -58,7 +58,7 @@
   function exchangeOrders() {
     // Orders a clinician sent to this lab over the exchange, not yet resulted.
     return X.care.labOrders({ labOrgId: cur.id }).filter(function (o) { return !o.result; }).map(function (o) {
-      return { id: o.orderId, pt: o.patientName, mrn: o.patientId, dept: 'Chemistry', tests: [o.testName], prio: o.urgency, status: 'Received', coll: new Date(o.ts).toTimeString().slice(0, 5), exchange: true, order: o, from: o.clinicName };
+      return { id: o.orderId, pt: o.patientName, mrn: o.patientId, dept: 'Chemistry', tests: [o.testName + (o.simDay ? ' (simulated day ' + o.simDay + ')' : '')], prio: o.urgency, status: 'Received', coll: new Date(o.ts).toTimeString().slice(0, 5), exchange: true, order: o, from: o.clinicName };
     });
   }
 

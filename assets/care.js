@@ -88,7 +88,7 @@
     var t = X.labTest(o.test); if (!t) return null;
     X.access({ patientId: v.patientId, flow: 'treatment', recipient: o.labOrgId, purpose: 'lab order' }, actor('pulse'));
     return X.append('LAB_ORDERED', {
-      orderId: uid('ORD'), visitId: v.visitId, patientId: v.patientId, patientName: v.patientName, test: t.code, testName: t.name,
+      orderId: uid('ORD'), simDay: o.simDay || 0, visitId: v.visitId, patientId: v.patientId, patientName: v.patientName, test: t.code, testName: t.name,
       urgency: o.urgency || 'Routine', clinicId: v.clinicId, clinicName: v.clinicName, labOrgId: o.labOrgId, labName: orgName(o.labOrgId), orderedBy: v.clinician
     }, actor('pulse'));
   };
@@ -100,17 +100,21 @@
     }).filter(function (p) { return !filter || ((!filter.visitId || p.visitId === filter.visitId) && (!filter.labOrgId || p.labOrgId === filter.labOrgId) && (!filter.patientId || p.patientId === filter.patientId)); });
   };
   // The analyzer is simulated. Amara's HbA1c is fixed so the story is repeatable.
-  care.simulatedValue = function (order) {
-    if (order.patientId === 'PT-AMARA') return order.test === 'HBA1C' ? 8.1 : order.test === 'CREAT' ? 1.0 : 180;
+  care.simulatedValue = function (order, simDay) {
+    // Amara's story: HbA1c 8.1 at baseline, improving with treatment and follow-up.
+    if (order.patientId === 'PT-AMARA') {
+      if (order.test === 'HBA1C') return simDay >= 90 ? 7.2 : simDay >= 30 ? 7.7 : 8.1;
+      return order.test === 'CREAT' ? 1.0 : 180;
+    }
     var n = parseInt(X.hash53(order.orderId + order.test), 16) % 100;
     if (order.test === 'HBA1C') return Math.round((5.2 + n / 25) * 10) / 10;
     if (order.test === 'CREAT') return Math.round((0.6 + n / 80) * 10) / 10;
     return 150 + n;
   };
   care.releaseLab = function (order, labOrgId, personaId) {
-    var t = X.labTest(order.test), val = care.simulatedValue(order);
+    var t = X.labTest(order.test), val = care.simulatedValue(order, order.simDay || 0);
     return X.append('LAB_RESULT', {
-      orderId: order.orderId, visitId: order.visitId, test: t.code, testName: t.name, value: val, unit: t.unit, flag: val > t.flagAbove,
+      orderId: order.orderId, simDay: order.simDay || 0, visitId: order.visitId, test: t.code, testName: t.name, value: val, unit: t.unit, flag: val > t.flagAbove,
       patientId: order.patientId, patientName: order.patientName, labOrgId: labOrgId, simulated: true
     }, actor('prism', personaId));
   };
@@ -184,13 +188,14 @@
     return { ok: true, event: ev, referralId: ev.payload.referralId };
   };
   care.referrals = function (filter) {
-    var resp = {}, adm = {}, notice = {};
+    var resp = {}, adm = {}, notice = {}, dis = {};
+    X.eventsOfType('DISCHARGE_COMPLETED').forEach(function (e) { dis[e.payload.referralId] = Object.assign(clone(e.payload), { ts: e.ts }); });
     X.eventsOfType('REFERRAL_RESPONSE').forEach(function (e) { resp[e.payload.referralId] = Object.assign(clone(e.payload), { ts: e.ts }); });
     X.eventsOfType('HOSPITAL_NOTICE').forEach(function (e) { notice[e.payload.referralId] = Object.assign(clone(e.payload), { ts: e.ts }); });
     X.eventsOfType('ADMISSION').forEach(function (e) { if (e.payload.referralId) adm[e.payload.referralId] = Object.assign(clone(e.payload), { ts: e.ts }); });
     return X.eventsOfType('CLINIC_REFERRAL').map(function (e) {
-      var p = clone(e.payload); p.ts = e.ts; p.response = resp[p.referralId] || null; p.notice = notice[p.referralId] || null; p.admission = adm[p.referralId] || null;
-      p.status = p.admission ? 'admitted' : p.response ? p.response.decision : 'sent'; return p;
+      var p = clone(e.payload); p.ts = e.ts; p.response = resp[p.referralId] || null; p.notice = notice[p.referralId] || null; p.admission = adm[p.referralId] || null; p.discharge = dis[p.referralId] || null;
+      p.status = p.discharge ? 'discharged' : p.admission ? 'admitted' : p.response ? p.response.decision : 'sent'; return p;
     }).filter(function (p) { return !filter || ((!filter.visitId || p.visitId === filter.visitId) && (!filter.toOrgId || p.toOrgId === filter.toOrgId) && (!filter.patientId || p.patientId === filter.patientId)); });
   };
   care.respondReferral = function (o) {
@@ -227,6 +232,129 @@
     });
     var tot = lines.reduce(function (a, l) { return { amount: a.amount + l.amount, patient: a.patient + l.patient, payer: a.payer + l.payer }; }, { amount: 0, patient: 0, payer: 0 });
     return { visitId: visitId, currency: care.currency(), lines: lines, total: tot };
+  };
+
+
+  /* ---------- observations, discharge, post-acute loop, outcome record ---------- */
+
+  care.MEASURES = {
+    'HBA1C': { label: 'HbA1c', unit: '%', better: 'down', mcid: 0.5, win: 90 },
+    'BP-SYS': { label: 'Systolic blood pressure', unit: 'mmHg', better: 'down', mcid: 10, win: 30 }
+  };
+
+  // simDay is a simulated clock: days since the index visit. It lets the demo show a
+  // 90 day follow-up without waiting 90 days. Every use is labelled simulated in the UI.
+  care.observe = function (o) {
+    var M = care.MEASURES[o.code]; if (!M) return null;
+    return X.append('OBSERVATION_RECORDED', {
+      obsId: uid('OBS'), patientId: o.patientId, code: o.code, label: M.label, value: +o.value, unit: M.unit, simDay: o.simDay || 0,
+      sourceOrgId: o.sourceOrgId, sourceName: orgName(o.sourceOrgId), visitId: o.visitId || null, note: o.note || ''
+    }, actor(o.app || 'pulse'));
+  };
+  care.observations = function (patientId, code) {
+    var list = [];
+    X.eventsOfType('OBSERVATION_RECORDED').forEach(function (e) { var p = e.payload; if (p.patientId === patientId && p.code === code) list.push({ code: p.code, value: p.value, unit: p.unit, simDay: p.simDay || 0, sourceOrgId: p.sourceOrgId, sourceName: p.sourceName, ts: e.ts, via: 'observation' }); });
+    X.eventsOfType('LAB_RESULT').forEach(function (e) { var p = e.payload; if (p.patientId === patientId && p.test === code) list.push({ code: code, value: p.value, unit: p.unit, simDay: p.simDay || 0, sourceOrgId: p.labOrgId, sourceName: orgName(p.labOrgId), ts: e.ts, via: 'lab' }); });
+    return list.sort(function (a, b) { return a.simDay - b.simDay || a.ts - b.ts; });
+  };
+
+  care.discharge = function (o) {
+    var r = care.referrals().filter(function (x) { return x.referralId === o.referralId; })[0];
+    if (!r || r.status !== 'admitted') return { ok: false, reason: 'Only an admitted patient can be discharged.' };
+    if (X.eventsOfType('DISCHARGE_COMPLETED').some(function (e) { return e.payload.referralId === o.referralId; })) return { ok: false, reason: 'Already discharged.' };
+    var d = X.access({ patientId: r.patientId, flow: 'treatment', recipient: o.toOrgId, purpose: 'post-acute referral' }, actor('apex', o.personaId));
+    if (!d.allow) return { ok: false, reason: d.reason };
+    var dischargeId = uid('DC'), plan = { interventions: o.interventions || [], measures: o.measures || ['BP-SYS'], windowDays: 90, notes: o.notes || '' };
+    if (o.baselineBp) care.observe({ patientId: r.patientId, code: 'BP-SYS', value: o.baselineBp, simDay: 0, sourceOrgId: o.orgId, app: 'apex', note: 'at discharge' });
+    X.append('DISCHARGE_COMPLETED', { dischargeId: dischargeId, referralId: o.referralId, patientId: r.patientId, patientName: r.patientName, orgId: o.orgId, orgName: orgName(o.orgId), toOrgId: o.toOrgId, toOrgName: orgName(o.toOrgId), plan: plan, by: o.by }, actor('apex', o.personaId));
+    X.append('POSTACUTE_REFERRAL', { postAcuteId: uid('PA'), dischargeId: dischargeId, fromOrgId: o.orgId, fromOrgName: orgName(o.orgId), toOrgId: o.toOrgId, toOrgName: orgName(o.toOrgId), patientId: r.patientId, patientName: r.patientName, plan: plan }, actor('apex', o.personaId));
+    return { ok: true, dischargeId: dischargeId };
+  };
+  care.postAcute = function (filter) {
+    var fu = {}, closed = {};
+    X.eventsOfType('FOLLOWUP_RECORDED').forEach(function (e) { (fu[e.payload.postAcuteId] = fu[e.payload.postAcuteId] || []).push(Object.assign(clone(e.payload), { ts: e.ts })); });
+    X.eventsOfType('POSTACUTE_CLOSED').forEach(function (e) { closed[e.payload.postAcuteId] = true; });
+    return X.eventsOfType('POSTACUTE_REFERRAL').map(function (e) {
+      var p = clone(e.payload); p.ts = e.ts; p.followups = fu[p.postAcuteId] || []; p.status = closed[p.postAcuteId] ? 'closed' : 'open'; return p;
+    }).filter(function (p) { return !filter || ((!filter.toOrgId || p.toOrgId === filter.toOrgId) && (!filter.patientId || p.patientId === filter.patientId)); });
+  };
+  care.recordFollowup = function (o) {
+    var pa = care.postAcute().filter(function (x) { return x.postAcuteId === o.postAcuteId; })[0]; if (!pa || pa.status === 'closed') return null;
+    var a = actor('bridge', o.personaId);
+    var ev = X.append('FOLLOWUP_RECORDED', { postAcuteId: pa.postAcuteId, patientId: pa.patientId, patientName: pa.patientName, simDay: o.simDay, bpSys: o.bpSys, bpDia: o.bpDia, adherence: o.adherence || '', orgId: o.orgId, orgName: orgName(o.orgId), by: o.by }, a);
+    care.observe({ patientId: pa.patientId, code: 'BP-SYS', value: o.bpSys, simDay: o.simDay, sourceOrgId: o.orgId, app: 'bridge', note: 'home follow-up' });
+    return ev;
+  };
+  care.closePostAcute = function (postAcuteId, by) { return X.append('POSTACUTE_CLOSED', { postAcuteId: postAcuteId, by: by }, actor('bridge')); };
+
+  // Updates a clinic should see about patients it has seen, minus the ones it acknowledged.
+  care.updatesFor = function (clinicId) {
+    var mine = {}; care.visits().forEach(function (v) { if (v.clinicId === clinicId) mine[v.patientId] = true; });
+    var acked = {}; X.eventsOfType('UPDATE_ACKNOWLEDGED').forEach(function (e) { if (e.payload.clinicId === clinicId) acked[e.payload.key] = true; });
+    var out = [];
+    X.eventsOfType('DISCHARGE_COMPLETED').forEach(function (e) { var p = e.payload; if (mine[p.patientId]) out.push({ key: e.id, ts: e.ts, patientId: p.patientId, patientName: p.patientName, kind: 'discharge', from: p.orgName, text: 'Discharged from ' + p.orgName + ' to ' + p.toOrgName + '. Plan: ' + (p.plan.interventions.join(', ') || 'follow-up') + '.' }); });
+    X.eventsOfType('FOLLOWUP_RECORDED').forEach(function (e) { var p = e.payload; if (mine[p.patientId]) out.push({ key: e.id, ts: e.ts, patientId: p.patientId, patientName: p.patientName, kind: 'followup', from: p.orgName, text: 'Home follow-up, simulated day ' + p.simDay + ': BP ' + p.bpSys + '/' + p.bpDia + (p.adherence ? ', ' + p.adherence : '') + '.' }); });
+    return out.filter(function (u) { return !acked[u.key]; }).sort(function (a, b) { return b.ts - a.ts; });
+  };
+  care.acknowledge = function (key, clinicId) { return X.append('UPDATE_ACKNOWLEDGED', { key: key, clinicId: clinicId }, actor('pulse')); };
+
+  care.interventions = function (patientId, code) {
+    var out = [], ind = code === 'HBA1C' ? 'Type 2 diabetes' : 'Hypertension';
+    X.eventsOfType('RX_WRITTEN').forEach(function (e) { var p = e.payload; if (p.patientId === patientId && (p.indication === ind || (INDICATION[p.drug] || [])[0] === ind)) out.push({ kind: 'prescription', text: p.drugName + ' prescribed by ' + p.prescriber, orgId: p.orgId, ts: e.ts, eventId: e.id }); });
+    X.eventsOfType('DISCHARGE_COMPLETED').forEach(function (e) { var p = e.payload; if (p.patientId === patientId && p.plan.measures.indexOf(code) >= 0) out.push({ kind: 'post-acute plan', text: p.plan.interventions.join(', ') + ' (' + p.toOrgName + ')', orgId: p.orgId, ts: e.ts, eventId: e.id }); });
+    return out;
+  };
+  // The five parts of an outcome. Staying out of hospital is not one of them.
+  care.outcomeRecord = function (patientId, code) {
+    var M = care.MEASURES[code], obs = care.observations(patientId, code);
+    var baseline = obs.filter(function (o) { return o.simDay <= 0; })[0] || null;
+    var iv = care.interventions(patientId, code);
+    var claimant = iv.length ? iv[0].orgId : null;
+    var later = baseline ? obs.filter(function (o) { return o.simDay > 0; }) : [];
+    var follow = later.filter(function (o) { return o.simDay >= M.win; }).slice(-1)[0] || null;
+    var latest = later.slice(-1)[0] || null;
+    var change = baseline && follow ? Math.round((M.better === 'down' ? baseline.value - follow.value : follow.value - baseline.value) * 10) / 10 : null;
+    var checks = [
+      { k: 'Baseline measured', ok: !!baseline, note: baseline ? baseline.value + ' ' + M.unit + ' at ' + baseline.sourceName : 'none yet' },
+      { k: 'Linked to an intervention', ok: iv.length > 0, note: iv.length ? iv.map(function (i) { return i.text; }).join('; ') : 'no intervention on the exchange' },
+      { k: 'Follow-up after the ' + M.win + ' day window', ok: !!follow, note: follow ? follow.value + ' ' + M.unit + ' on simulated day ' + follow.simDay : latest ? 'latest is day ' + latest.simDay + ', window not yet passed' : 'none yet' },
+      { k: 'Independent record', ok: !!follow && follow.sourceOrgId !== claimant && (!baseline || follow.sourceOrgId !== baseline.sourceOrgId || follow.via === 'lab'), note: follow ? 'measured by ' + follow.sourceName + (follow.sourceOrgId === claimant ? ', the same organisation that made the claim' : '') : 'waiting for a follow-up' },
+      { k: 'Change at or above the clinical threshold (' + M.mcid + ' ' + M.unit + ')', ok: change !== null && change >= M.mcid, note: change === null ? 'not yet measurable' : (change >= 0 ? 'improved by ' : 'changed by ') + change + ' ' + M.unit }
+    ];
+    var all = checks.every(function (c) { return c.ok; });
+    return { patientId: patientId, code: code, measure: M, baseline: baseline, followUp: follow, change: change, interventions: iv, checks: checks, status: !baseline ? 'unmeasured' : !follow ? 'pending' : all ? 'documented' : 'not met' };
+  };
+
+  /* ---------- delegation and second opinion: the patient decides ---------- */
+
+  care.DELEGATES = [{ id: 'DLG-CHIDI', name: 'Chidi Okonkwo', rel: 'Spouse' }, { id: 'DLG-ADA', name: 'Ada Okonkwo', rel: 'Daughter' }];
+  care.SECOND_OPINION_ORGS = ['ORG-CLINIC-MID'];
+  care.delegate = function (patientId, delegateId, scope, days) {
+    return X.consent.grant({ patientId: patientId, flow: 'delegated', recipient: delegateId, scope: scope, expires: Date.now() + days * 86400000, by: 'patient' }, actor('nova'));
+  };
+  care.undelegate = function (patientId, delegateId) { return X.consent.revoke({ patientId: patientId, flow: 'delegated', recipient: delegateId, by: 'patient' }, actor('nova')); };
+  care.delegations = function (patientId) {
+    var st = X.consent.state(patientId);
+    return Object.keys(st).map(function (k) { return st[k]; }).filter(function (g) { return g.flow === 'delegated'; });
+  };
+  care.shareOpinion = function (o) {
+    var sid = uid('SO');
+    X.consent.grant({ patientId: o.patientId, flow: 'delegated', recipient: o.toOrgId, scope: ['second-opinion'].concat(o.items), expires: Date.now() + o.days * 86400000, by: 'patient' }, actor('nova'));
+    return X.append('SECOND_OPINION_SHARED', { shareId: sid, patientId: o.patientId, patientName: o.patientName, toOrgId: o.toOrgId, toOrgName: orgName(o.toOrgId), items: o.items, days: o.days, question: o.question || '' }, actor('nova'));
+  };
+  care.stopOpinion = function (patientId, toOrgId) { return X.consent.revoke({ patientId: patientId, flow: 'delegated', recipient: toOrgId, by: 'patient' }, actor('nova')); };
+  care.opinionShares = function (filter) {
+    return X.eventsOfType('SECOND_OPINION_SHARED').map(function (e) { return Object.assign(clone(e.payload), { ts: e.ts }); }).filter(function (p) { return !filter || ((!filter.patientId || p.patientId === filter.patientId) && (!filter.toOrgId || p.toOrgId === filter.toOrgId)); });
+  };
+  // What the receiving clinic may read right now. Each item is checked against the patient's grant and logged.
+  care.opinionView = function (share, readerOrgId, log) {
+    var out = { allowed: [], denied: [] };
+    share.items.forEach(function (it) {
+      var req = { patientId: share.patientId, flow: 'delegated', recipient: readerOrgId, scope: it, purpose: 'second opinion' };
+      var d = log ? X.access(req, actor('pulse')) : X.evaluate(req);
+      (d.allow ? out.allowed : out.denied).push({ item: it, reason: d.reason });
+    });
+    return out;
   };
 
   X.care = care;

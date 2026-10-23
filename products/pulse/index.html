@@ -87,6 +87,7 @@
     { key: 'orders', label: 'Orders', ic: 'OR', group: 'Clinic' },
     { key: 'results', label: 'Results', ic: 'RS', group: 'Clinic' },
     { key: 'referrals', label: 'Referrals', ic: 'RF', group: 'Coordination' },
+    { key: 'opinions', label: 'Second opinions', ic: 'SO', group: 'Coordination' },
     { key: 'payments', label: 'Payments', ic: 'PY', group: 'Coordination' },
     { key: 'tasks', label: 'Tasks', ic: 'TK', group: 'Coordination' },
     { key: 'impact', label: 'Impact and GIC', ic: 'IM', group: 'Oversight' }
@@ -101,13 +102,15 @@
       if (r.status === 'declined') out.push({ sev: 'crit', t: r.toOrgName + ' declined ' + r.patientName, s: r.response.reason, go: 'referrals', cta: 'Re-refer' });
       if (r.status === 'accepted') out.push({ sev: 'idle', t: r.toOrgName + ' accepted ' + r.patientName, s: r.notice ? r.notice.unit + ', expected ' + r.notice.expectedBy.toLowerCase() : '', go: 'referrals', cta: 'Open' });
     });
+    C.updatesFor(cur.id).forEach(function (u) { out.push({ sev: u.kind === 'followup' ? 'idle' : 'warn', t: (u.kind === 'followup' ? 'Follow-up update: ' : 'Discharge update: ') + u.patientName, s: u.text, go: 'record', cta: 'Open record', ack: u.key }); });
+    C.opinionShares({ toOrgId: cur.id }).filter(function (sh) { return C.opinionView(sh, cur.id).allowed.length; }).forEach(function (sh) { out.push({ sev: 'warn', t: 'Second opinion requested: ' + sh.patientName, s: sh.question || 'The patient shared their record with you.', go: 'opinions', cta: 'Open' }); });
     if (v) out.unshift({ sev: 'warn', t: 'Visit open: ' + v.patientName, s: v.mode + ', started ' + ago(v.startedAt), go: 'visit', cta: 'Continue' });
     return out;
   }
   function inbox() {
     var n = needs();
     return '<div class="card shadow" style="margin-bottom:16px">' + ctitle('Needs you') +
-      (n.length ? n.map(function (x) { return '<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--hairline)"><span class="sev ' + x.sev + '"></span><div style="flex:1"><div style="font-size:13px;font-weight:600">' + esc(x.t) + '</div><div class="sub2">' + esc(x.s) + '</div></div><button class="btn btn-ghost btn-sm" data-mod="' + x.go + '">' + esc(x.cta) + '</button></div>'; }).join('') : '<div class="sub">Nothing is waiting on you. Start a visit from the queue.</div>') + '</div>';
+      (n.length ? n.map(function (x) { return '<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--hairline)"><span class="sev ' + x.sev + '"></span><div style="flex:1"><div style="font-size:13px;font-weight:600">' + esc(x.t) + '</div><div class="sub2">' + esc(x.s) + '</div></div>' + (x.ack ? '<button class="btn btn-ghost btn-sm" data-ack="' + esc(x.ack) + '" style="margin-right:6px">Acknowledge</button>' : '') + '<button class="btn btn-ghost btn-sm" data-mod="' + x.go + '">' + esc(x.cta) + '</button></div>'; }).join('') : '<div class="sub">Nothing is waiting on you. Start a visit from the queue.</div>') + '</div>';
   }
 
   /* ---------- visit: identity step then the visit ---------- */
@@ -151,6 +154,7 @@
       prov('a visit is a VISIT_STARTED event with the identity method recorded; a treatment access decision is written to the audit trail');
   }
   function visitPanel(v) {
+    var vit = C.observations(v.patientId, 'BP-SYS').filter(function (o) { return o.simDay === 0 && o.sourceOrgId === v.clinicId; });
     var orders = C.labOrders({ visitId: v.visitId }), rxs = X.prescriptions().filter(function (r) { return r.visitId === v.visitId; }), refs = C.referrals({ visitId: v.visitId });
     var tl = [];
     tl.push([v.startedAt, 'Visit started, ' + v.mode + '. Identity: ' + v.identity.label]);
@@ -165,6 +169,8 @@
       '<div class="rec"><span class="k">Identity</span><span>' + esc(v.identity.label) + '</span></div>' +
       '<div class="rec"><span class="k">Reason</span><span>' + esc(v.reason || 'not stated') + '</span></div>' +
       '<div class="rec"><span class="k">Pharmacy</span><span>' + esc(C.nominatedPharmacy(v.patientId).name) + ' <span class="sub2">(' + (C.nominatedPharmacy(v.patientId).source === 'patient' ? 'chosen by the patient' : 'default, ask the patient') + ')</span></span></div>' +
+      '<div class="rec"><span class="k">Vitals</span><span>' + (vit.length ? esc(vit.map(function (o) { return o.value + ' ' + o.unit; }).join(', ')) : 'not recorded') + '</span></div>' +
+      (v.status === 'open' ? '<div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px;flex-wrap:wrap"><div style="width:130px">' + fld('vt-sys', 'Systolic (mmHg)', '', 'e.g. 152') + '</div><div style="width:130px">' + fld('vt-dia', 'Diastolic', '', 'e.g. 96') + '</div><button class="btn btn-ghost btn-sm" data-vitals>Record vitals</button></div>' : '') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-primary btn-sm" data-mod="orders">Order a test</button><button class="btn btn-primary btn-sm" data-mod="prescribe">Prescribe</button><button class="btn btn-ghost btn-sm" data-mod="referrals">Refer</button><button class="btn btn-ghost btn-sm" data-mod="payments">Payments</button>' +
       (v.status === 'open' ? '<button class="btn btn-ghost btn-sm" data-close="' + esc(v.visitId) + '">Close visit</button>' : '<span class="chip unmeasured">closed</span>') + '</div></div>' +
       '<div class="card shadow">' + ctitle('Timeline') + '<div class="tl">' + tl.map(function (t) { return '<div class="it"><span class="sub2 mono">' + ago(t[0]) + '</span> ' + esc(t[1]) + '</div>'; }).join('') + '</div></div></div>' +
@@ -190,7 +196,43 @@
       '<div class="rec"><span class="k">Medicines</span><span>' + (sent.length ? esc(sent.map(function (r) { return r.drugName; }).join(', ')) : 'none recorded') + '</span></div>' +
       '<div class="rec"><span class="k">Recent results</span><span>' + (results.length ? esc(results.map(function (r) { return r.testName + ' ' + r.value + r.unit; }).join(', ')) : 'none yet') + '</span></div>' +
       '</div><div class="card shadow"><div class="iris"><div class="h">IRIS</div>' + (isA ? 'Blood pressure trend is up over three visits and her HbA1c, if ordered, will confirm control. CardiNex-10 suits the hypertension and has no interaction with her metformin. She is penicillin allergic, not relevant here. A licensed clinician decides.' : 'There is no history on the exchange for this patient yet, so I have nothing to compare against. Ask about current medicines and allergies and record them. A licensed clinician decides.') + '</div></div></div>' +
+      outcomeCards(pid) +
       prov('reads from the exchange; the record is assembled, not re-entered');
+  }
+  function outcomeCards(pid) {
+    var cards = ['HBA1C', 'BP-SYS'].map(function (code) {
+      var o = C.outcomeRecord(pid, code); if (o.status === 'unmeasured') return '';
+      var chip = o.status === 'documented' ? '<span class="chip verified">documented</span>' : o.status === 'pending' ? '<span class="chip claimed">pending follow-up</span>' : '<span class="chip inconsistent">not met</span>';
+      return '<div class="card shadow" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-family:var(--font-brand);font-weight:700">' + esc(o.measure.label) + ' outcome record</div>' + chip + '</div>' +
+        '<div class="rec"><span class="k">Baseline</span><span>' + (o.baseline ? esc(o.baseline.value + ' ' + o.measure.unit) : 'none') + '</span></div>' +
+        '<div class="rec"><span class="k">Follow-up</span><span>' + (o.followUp ? esc(o.followUp.value + ' ' + o.measure.unit) + ' <span class="sub2">simulated day ' + o.followUp.simDay + '</span>' : 'not yet') + '</span></div>' +
+        o.checks.map(function (c) { return '<div class="rec"><span class="k">' + esc(c.k) + '</span><span style="text-align:right"><span class="chip ' + (c.ok ? 'verified' : 'unmeasured') + '">' + (c.ok ? 'met' : 'open') + '</span> <span class="sub2">' + esc(c.note) + '</span></span></div>'; }).join('') +
+        '<div class="sub2" style="margin-top:8px">Staying out of hospital is not an outcome. This counts only when health measurably improves, linked to what was done, and an independent record agrees.</div></div>';
+    }).join('');
+    return cards;
+  }
+
+  function opinionsBody() {
+    var shares = C.opinionShares({ toOrgId: cur.id });
+    return head('Second opinions', 'Patients can share their record with you for a second opinion. They choose what, for how long, and can stop it at any time.') +
+      (shares.length ? shares.slice().reverse().map(function (sh) {
+        var st = C.opinionView(sh, cur.id, false), live = st.allowed.length > 0, op = opened[sh.shareId];
+        return '<div class="card shadow" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center"><div style="font-family:var(--font-brand);font-weight:700">' + esc(sh.patientName) + '</div>' + (live ? '<span class="chip verified">shared with you</span>' : '<span class="chip unmeasured">no longer shared</span>') + '</div>' +
+          '<div class="sub2" style="margin:6px 0">Question: ' + esc(sh.question || 'none given') + '</div><div class="sub2">Shared items: ' + esc(sh.items.join(', ')) + ' for ' + sh.days + ' days</div>' +
+          (live ? '<div style="margin-top:10px"><button class="btn btn-primary btn-sm" data-open-opinion="' + esc(sh.shareId) + '">Open shared record</button></div>' : '<div class="sub" style="margin-top:10px">The patient stopped sharing or the time ran out. You can no longer open it.</div>') +
+          (live && op ? opinionRecord(sh, op) : '') + '</div>';
+      }).join('') : '<div class="card shadow"><div class="sub">Nothing shared with ' + esc(cur.name) + ' yet. A patient does this from Nova. Switch to Shetu Medical Centre above if you are showing a second-opinion clinic.</div></div>') +
+      prov('each item you open is checked against the patient\'s grant and written to their access log');
+  }
+  function opinionRecord(sh, op) {
+    var pid = sh.patientId, out = '<div style="margin-top:12px">';
+    op.allowed.forEach(function (a) {
+      if (a.item === 'medicines') out += '<div class="rec"><span class="k">Medicines</span><span>' + (X.prescriptions().filter(function (r) { return r.patientId === pid; }).map(function (r) { return esc(r.drugName + ' x' + r.qty); }).join(', ') || 'none') + '</span></div>';
+      if (a.item === 'results') out += '<div class="rec"><span class="k">Results</span><span>' + (X.labResults().filter(function (r) { return r.patientId === pid; }).map(function (r) { return esc(r.testName + ' ' + r.value + ' ' + r.unit); }).join(', ') || 'none') + '</span></div>';
+      if (a.item === 'discharge plan') { var d = X.eventsOfType('DISCHARGE_COMPLETED').filter(function (e) { return e.payload.patientId === pid; }).slice(-1)[0]; out += '<div class="rec"><span class="k">Discharge plan</span><span>' + (d ? esc(d.payload.plan.interventions.join(', ')) : 'none yet') + '</span></div>'; }
+    });
+    op.denied.forEach(function (d) { out += '<div class="rec"><span class="k">' + esc(d.item) + '</span><span class="sub2">not shared: ' + esc(d.reason) + '</span></div>'; });
+    return out + '</div>';
   }
 
   function prescribeBody() {
@@ -216,6 +258,7 @@
       '<div class="split"><div class="card shadow rx">' +
       '<label for="otest">Test</label><select id="otest">' + X.LAB_TESTS.map(function (t) { return '<option value="' + t.code + '">' + esc(t.name) + '</option>'; }).join('') + '</select>' +
       '<label for="ourg">Urgency</label><select id="ourg"><option>Routine</option><option>Urgent</option><option>STAT</option></select>' +
+      '<label for="oday">Clock (demonstration only)</label><select id="oday"><option value="0">Now, baseline</option><option value="30">Simulated day 30</option><option value="90">Simulated day 90, follow-up</option></select>' +
       '<label for="olab">Lab</label><select id="olab">' + X.orgsFor('prism').map(function (o) { return '<option value="' + o.id + '"' + (o.id === 'ORG-LAB' ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('') + '</select>' +
       '<button class="btn btn-primary" id="orderLab" style="margin-top:14px;width:100%">Send order to the lab</button></div>' +
       '<div class="card shadow">' + ctitle('This visit') + (list.length ? list.slice().reverse().map(function (o) {
@@ -241,10 +284,10 @@
       '<label for="rwhy">Reason</label><input id="rwhy" value="Uncontrolled blood pressure with raised HbA1c; admission for stabilisation">' +
       '<div class="sub2" style="margin-top:8px">The hospital receives the reason, current medicines and results, and nothing else. They can accept or decline, and a decline comes back with a reason.</div>' +
       '<button class="btn btn-primary" id="sendRef" style="margin-top:12px">Send referral</button></div>' : '<div class="card shadow" style="margin-bottom:14px"><div class="sub" style="margin-bottom:10px">Open a visit to refer a patient.</div><button class="btn btn-primary" data-mod="visit">Start a visit</button></div>';
-    var chip = { sent: '<span class="chip claimed">sent, awaiting reply</span>', accepted: '<span class="chip verified">accepted</span>', declined: '<span class="chip inconsistent">declined</span>', admitted: '<span class="chip verified">admitted</span>' };
+    var chip = { sent: '<span class="chip claimed">sent, awaiting reply</span>', accepted: '<span class="chip verified">accepted</span>', declined: '<span class="chip inconsistent">declined</span>', admitted: '<span class="chip verified">admitted</span>', discharged: '<span class="chip verified">discharged</span>' };
     return head('Referrals', 'Refer to a hospital. The receiving facility in Apex sees it live and accepts or declines.') + form +
       (mine.length ? '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>To</th><th>Reason</th><th>Status</th></tr></thead><tbody>' + mine.slice().reverse().map(function (r) {
-        var det = r.status === 'declined' ? '<div class="sub2">' + esc(r.response.reason) + (r.response.alternativeName ? ' Suggested: ' + esc(r.response.alternativeName) : '') + '</div>' : r.notice ? '<div class="sub2">' + esc(r.notice.unit) + ', expected ' + esc(r.notice.expectedBy.toLowerCase()) + '</div>' : '';
+        var det = r.discharge ? '<div class="sub2">Follow-up with ' + esc(r.discharge.toOrgName) + '</div>' : r.status === 'declined' ? '<div class="sub2">' + esc(r.response.reason) + (r.response.alternativeName ? ' Suggested: ' + esc(r.response.alternativeName) : '') + '</div>' : r.notice ? '<div class="sub2">' + esc(r.notice.unit) + ', expected ' + esc(r.notice.expectedBy.toLowerCase()) + '</div>' : '';
         return '<tr><td class="nm">' + esc(r.patientName) + '</td><td>' + esc(r.toOrgName) + '</td><td>' + esc(r.reason) + '</td><td>' + chip[r.status] + det + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') +
       prov('CLINIC_REFERRAL, then REFERRAL_RESPONSE and HOSPITAL_NOTICE from Apex; the loop closes on the same record');
   }
@@ -281,6 +324,7 @@
     if (mod === 'orders') return ordersBody();
     if (mod === 'results') return resultsBody();
     if (mod === 'referrals') return referralsBody();
+    if (mod === 'opinions') return opinionsBody();
     if (mod === 'payments') return paymentsBody();
     if (mod === 'tasks') {
       var ab = needs().filter(function (n) { return n.sev === 'crit'; });
@@ -302,6 +346,7 @@
 
   function taskRow(sev, t, s) { return '<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--hairline)"><span class="sev ' + sev + '"></span><div style="flex:1"><span style="font-size:13px;font-weight:600">' + esc(t) + '</span></div><span class="sub2">' + esc(s) + '</span></div>'; }
 
+  var opened = {};
   var pending = false;
   function render() {
     var ae = document.activeElement;
@@ -375,9 +420,17 @@
     var cl = a.getAttribute('data-close'); if (cl) { C.closeVisit(cl, ''); vq = null; mod = 'queue'; UI.toast('Visit closed', 'The visit is on the record.'); return; }
 
     // orders, prescriptions, referrals
+    var ak = a.getAttribute('data-ack'); if (ak) { C.acknowledge(ak, cur.id); return; }
+    var oo = a.getAttribute('data-open-opinion');
+    if (oo) { var sh = C.opinionShares({ toOrgId: cur.id }).filter(function (x) { return x.shareId === oo; })[0]; if (sh) { opened[oo] = C.opinionView(sh, cur.id, true); render(); } return; }
+    if (a.hasAttribute('data-vitals')) {
+      var av = active(), sy = parseFloat((document.getElementById('vt-sys') || {}).value);
+      if (av && sy) { C.observe({ patientId: av.patientId, code: 'BP-SYS', value: sy, simDay: 0, sourceOrgId: cur.id, app: 'pulse', visitId: av.visitId, note: 'diastolic ' + ((document.getElementById('vt-dia') || {}).value || 'n/a') }); UI.toast('Recorded', 'Blood pressure is on the record as the baseline.'); }
+      return;
+    }
     if (a.id === 'orderLab') {
       var v = active(); if (!v) return;
-      var o = C.orderLab({ visitId: v.visitId, test: document.getElementById('otest').value, urgency: document.getElementById('ourg').value, labOrgId: document.getElementById('olab').value });
+      var o = C.orderLab({ visitId: v.visitId, test: document.getElementById('otest').value, urgency: document.getElementById('ourg').value, labOrgId: document.getElementById('olab').value, simDay: parseInt(document.getElementById('oday').value, 10) || 0 });
       UI.toast('Ordered', o.payload.testName + ' sent to ' + o.payload.labName + '.'); return;
     }
     if (a.id === 'writeRx') {

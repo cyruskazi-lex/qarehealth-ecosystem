@@ -251,13 +251,15 @@
 
   function beds() { var t = 0, o = 0; cur.units.forEach(function (u) { t += u.total; o += u.occ; }); o += X.admissions().filter(function (a) { return a.orgId === cur.id; }).length; return { total: t, occ: Math.min(t, o) }; }
   function receivingOrg() { var id = X.care.RECEIVING.filter(function (i) { return X.org(i) && X.org(i).name === cur.name; })[0]; return id ? X.org(id) : null; }
+  function org0() { var o = receivingOrg(); return o ? o.id : cur.id; }
   function clinicRefs() { var o = receivingOrg(); return o ? X.care.referrals({ toOrgId: o.id }) : []; }
   function clinicPending() { return clinicRefs().filter(function (r) { return r.status === 'sent'; }); }
   function clinicReferralsHTML() {
     var o = receivingOrg(); if (!o) return '';
     var list = clinicRefs();
     var others = X.orgsFor('apex').filter(function (x) { return x.id !== o.id; });
-    var chip = { sent: '<span class="chip claimed">awaiting your reply</span>', accepted: '<span class="chip verified">accepted</span>', declined: '<span class="chip inconsistent">declined</span>', admitted: '<span class="chip verified">admitted</span>' };
+    var chip = { sent: '<span class="chip claimed">awaiting your reply</span>', accepted: '<span class="chip verified">accepted</span>', declined: '<span class="chip inconsistent">declined</span>', admitted: '<span class="chip verified">admitted</span>', discharged: '<span class="chip verified">discharged</span>' };
+    var post = X.orgsFor('bridge');
     return '<div class="card shadow" style="margin-bottom:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:4px">Referrals from clinics</div>' +
       '<div class="refnote" style="margin-bottom:10px">Sent by a doctor in Pulse with the reason, current medicines and results. You accept or decline. A decline goes back to the doctor with your reason.</div>' +
       (list.length ? '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Patient</th><th>From</th><th>Reason</th><th>Shared</th><th>Status</th><th></th></tr></thead><tbody>' + list.slice().reverse().map(function (r) {
@@ -266,8 +268,9 @@
           act = '<div class="refsel" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center"><select id="ru-' + esc(r.referralId) + '" aria-label="Unit">' + cur.units.map(function (u) { return '<option>' + esc(u.name) + '</option>'; }).join('') + '</select><button class="btn btn-primary btn-sm" data-ref-accept="' + esc(r.referralId) + '">Accept</button></div>' +
             '<div class="refsel" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center;margin-top:6px"><select id="rr-' + esc(r.referralId) + '" aria-label="Reason for declining"><option>No bed available in the unit needed</option><option>Needs a service we do not offer</option><option>Treat closer to home first</option><option>Information missing from the referral</option></select><select id="ra-' + esc(r.referralId) + '" aria-label="Suggest another hospital"><option value="">No suggestion</option>' + others.map(function (x) { return '<option value="' + x.id + '">' + esc(x.name) + '</option>'; }).join('') + '</select><button class="btn btn-ghost btn-sm" data-ref-decline="' + esc(r.referralId) + '">Decline</button></div>';
         } else if (r.status === 'accepted') act = '<button class="btn btn-primary btn-sm" data-ref-admit="' + esc(r.referralId) + '">Patient arrived, admit</button>';
+        else if (r.status === 'admitted') act = '<div class="refsel" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center"><select id="dd-' + esc(r.referralId) + '" aria-label="Post-acute provider">' + post.map(function (x) { return '<option value="' + x.id + '">' + esc(x.name) + '</option>'; }).join('') + '</select><input id="db-' + esc(r.referralId) + '" value="152" size="4" aria-label="Systolic blood pressure at discharge" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:10px"><button class="btn btn-primary btn-sm" data-ref-discharge="' + esc(r.referralId) + '">Discharge with follow-up</button></div><div class="refnote" style="text-align:right;margin-top:4px">Home follow-up plan, BP at discharge</div>';
         return '<tr><td class="nm">' + esc(r.patientName) + '<div class="sub2">' + esc(r.urgency) + '</div></td><td>' + esc(r.fromOrgName) + '<div class="sub2">' + esc(r.referrer) + '</div></td><td>' + esc(r.reason) + '</td>' +
-          '<td class="sub2">' + r.shared.medicines.length + ' medicines, ' + r.shared.results.length + ' results</td><td>' + chip[r.status] + (r.status === 'declined' ? '<div class="sub2">' + esc(r.response.reason) + '</div>' : r.notice ? '<div class="sub2">' + esc(r.notice.unit) + '</div>' : '') + '</td><td style="text-align:right">' + act + '</td></tr>';
+          '<td class="sub2">' + r.shared.medicines.length + ' medicines, ' + r.shared.results.length + ' results</td><td>' + chip[r.status] + (r.status === 'declined' ? '<div class="sub2">' + esc(r.response.reason) + '</div>' : r.discharge ? '<div class="sub2">Follow-up with ' + esc(r.discharge.toOrgName) + '</div>' : r.notice ? '<div class="sub2">' + esc(r.notice.unit) + '</div>' : '') + '</td><td style="text-align:right">' + act + '</td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="refnote">No clinic referrals yet. Open Pulse, start a visit and refer a patient to ' + esc(cur.name) + '; it appears here live.</div>') + '</div>';
   }
   function incoming() { var admitted = X.admissions().map(function (a) { return a.household; }); return X.referrals().filter(function (r) { return admitted.indexOf(r.household) < 0; }); }
@@ -1270,6 +1273,11 @@
       var alt = document.getElementById('ra-' + rd).value;
       var rs = X.care.respondReferral({ referralId: rd, decision: 'declined', reason: document.getElementById('rr-' + rd).value, alternativeOrgId: alt || null, by: cur.persona.name, personaId: cur.persona.id });
       UI.toast(rs && rs.ok ? 'Declined' : 'Not sent', rs && rs.ok ? 'The doctor sees your reason.' : (rs ? rs.reason : '')); render(); return;
+    }
+    var rdc = e.target.getAttribute('data-ref-discharge');
+    if (rdc) {
+      var dr = X.care.discharge({ referralId: rdc, orgId: org0(), toOrgId: document.getElementById('dd-' + rdc).value, interventions: ['Home blood pressure checks', 'Medicine adherence support', 'Dietitian review'], measures: ['BP-SYS', 'HBA1C'], baselineBp: parseFloat(document.getElementById('db-' + rdc).value) || null, by: cur.persona.name, personaId: cur.persona.id });
+      UI.toast(dr.ok ? 'Discharged' : 'Not discharged', dr.ok ? 'The home follow-up program and the doctor are notified. The plan and measures are on the record.' : dr.reason); render(); return;
     }
     if (rm) { X.care.admit(rm, cur.id, cur.persona.id); UI.toast('Admitted', 'Bed state updated and the record is open.'); render(); return; }
     var hh = e.target.getAttribute('data-admit'); if (hh) { var r = X.referrals().filter(function (x) { return x.household === hh; })[0]; X.append('ADMISSION', { household: hh, patientName: r ? r.patientName : hh, orgId: cur.id }, { app: 'apex', persona: cur.persona.id }); UI.toast('Admitted', (r ? r.patientName : hh) + ' admitted. Bed state updated.'); render(); return; }

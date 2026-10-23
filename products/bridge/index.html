@@ -18,6 +18,7 @@
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
 <script src="../../assets/spine.js"></script>
+<script src="../../assets/care.js"></script>
 <script src="../../assets/app.js"></script>
 <script>
 (function () {
@@ -58,6 +59,7 @@
     { key: 'registry', label: 'Household registry', ic: 'HR', group: 'Field' },
     { key: 'screen', label: 'Screening', ic: 'SC', group: 'Field' },
     { key: 'referrals', label: 'Referrals', ic: 'RF', group: 'Field' },
+    { key: 'postacute', label: 'Post-discharge', ic: 'PD', group: 'Field' },
     { key: 'epi', label: 'Immunisation', ic: 'IM', group: 'Programs' },
     { key: 'anc', label: 'Antenatal care', ic: 'AN', group: 'Programs' },
     { key: 'stock', label: 'Supplies', ic: 'SP', group: 'Programs' },
@@ -110,6 +112,21 @@
           '</tbody></table></div>' : '<div class="card"><div class="sub">None yet. Refer a household from the round and track it here; open Apex to admit it.</div></div>') +
         prov('referral status is read back from Apex admissions on the exchange, closing the loop');
     }
+    if (mod === 'postacute') {
+      var cases = X.care.postAcute({ toOrgId: cur.id });
+      return head('Post-discharge follow-up', 'Patients sent home from hospital with a follow-up plan. Visit them, record their blood pressure and how they are managing, and the result goes to their doctor and the hospital.') +
+        (cases.length ? cases.slice().reverse().map(function (c) {
+          var last = c.followups[c.followups.length - 1], done = c.followups.some(function (f) { return f.simDay >= 90; });
+          return '<div class="card shadow" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div style="font-family:var(--font-brand);font-weight:700">' + esc(c.patientName) + '</div><div class="sub2">From ' + esc(c.fromOrgName) + '. Plan: ' + esc(c.plan.interventions.join(', ')) + '</div></div>' + (c.status === 'closed' ? '<span class="chip verified">closed</span>' : '<span class="chip claimed">' + c.followups.length + ' follow-up' + (c.followups.length === 1 ? '' : 's') + '</span>') + '</div>' +
+            (c.followups.length ? '<div class="qt-wrap" style="border:0;margin-top:10px"><table class="qt"><thead><tr><th>Simulated day</th><th class="num">BP</th><th>Managing</th></tr></thead><tbody>' + c.followups.map(function (f) { return '<tr><td class="mono">' + f.simDay + '</td><td class="num">' + f.bpSys + '/' + f.bpDia + '</td><td class="sub2">' + esc(f.adherence) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') +
+            (c.status === 'open' ? '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
+              '<div style="width:150px">' + field('Visit (simulated clock)', '<select id="pf-day-' + esc(c.postAcuteId) + '"><option value="30">Day 30</option><option value="60">Day 60</option><option value="90">Day 90</option></select>') + '</div>' +
+              '<div style="width:100px">' + field('Systolic', '<input id="pf-sys-' + esc(c.postAcuteId) + '" value="140">') + '</div><div style="width:100px">' + field('Diastolic', '<input id="pf-dia-' + esc(c.postAcuteId) + '" value="88">') + '</div>' +
+              '<div style="width:200px">' + field('Managing', '<select id="pf-adh-' + esc(c.postAcuteId) + '"><option>taking medicines daily</option><option>missing some doses</option><option>stopped medicines</option></select>') + '</div>' +
+              '<button class="btn btn-primary btn-sm" data-followup="' + esc(c.postAcuteId) + '">Record follow-up</button>' + (done ? '<button class="btn btn-ghost btn-sm" data-pa-close="' + esc(c.postAcuteId) + '">Close case</button>' : '') + '</div>' : '') + '</div>';
+        }).join('') : '<div class="card shadow"><div class="sub">No patients sent home to ' + esc(cur.name) + ' yet. In Apex, discharge an admitted patient with a follow-up plan and the case lands here live.</div></div>') +
+        prov('POSTACUTE_REFERRAL from the hospital; each follow-up is a FOLLOWUP_RECORDED event and a measured blood pressure on the patient record');
+    }
     if (mod === 'epi') {
       return head('Immunisation', 'The EPI schedule for children in this catchment. Overdue first.') +
         kpis([['89%', 'fully immunised'], [EPI.filter(function (e) { return e.status === 'Overdue'; }).length, 'overdue'], [EPI.filter(function (e) { return e.status === 'Due'; }).length, 'due this week'], ['2', 'defaulters traced']]) +
@@ -150,10 +167,15 @@
 
   function field(label, control) { return '<label class="tenant" style="display:block;border:0;background:transparent;padding:0;cursor:default"><span style="display:block;font-size:11px;color:var(--mid);font-weight:600;margin:10px 0 4px">' + esc(label) + '</span></label><div style="margin-top:-6px">' + control.replace('<select', '<select style="width:100%;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface)"').replace('<input', '<input style="width:100%;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface)"') + '</div>'; }
 
+  var pending = false;
   function render() {
+    var ae = document.activeElement;
+    if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && document.getElementById('root').contains(ae)) { pending = true; return; }
+    pending = false;
     var who = cur.personas[0];
     var overdue = EPI.filter(function (e) { return e.status === 'Overdue'; }).length;
-    var mods = MODS.map(function (m) { return m.key === 'epi' ? Object.assign({}, m, { badge: overdue || null }) : m; });
+    var openPa = X.care.postAcute({ toOrgId: cur.id }).filter(function (c) { return c.status === 'open'; }).length;
+    var mods = MODS.map(function (m) { return m.key === 'epi' ? Object.assign({}, m, { badge: overdue || null }) : m.key === 'postacute' ? Object.assign({}, m, { badge: openPa || null, calm: true }) : m; });
     document.getElementById('root').innerHTML =
       UI.topbar({ appName: 'Bridge', personaName: who.name, personaRole: who.role + ' · ' + cur.name }) +
       '<div class="os">' + UI.osNav(mods, mod) +
@@ -164,6 +186,13 @@
   document.addEventListener('click', function (e) {
     var t = e.target.getAttribute('data-tenant'); if (t) { cur = X.org(t); render(); return; }
     var m = e.target.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); render(); return; }
+    var fu = e.target.getAttribute('data-followup');
+    if (fu) {
+      var g = function (k) { return document.getElementById('pf-' + k + '-' + fu); };
+      var ev = X.care.recordFollowup({ postAcuteId: fu, simDay: parseInt(g('day').value, 10), bpSys: parseFloat(g('sys').value), bpDia: parseFloat(g('dia').value), adherence: g('adh').value, orgId: cur.id, by: cur.personas[0].name, personaId: cur.personas[0].id });
+      if (ev) UI.toast('Recorded', 'Follow-up sent to the doctor and the hospital.'); return;
+    }
+    var pc = e.target.getAttribute('data-pa-close'); if (pc) { X.care.closePostAcute(pc, cur.personas[0].name); UI.toast('Closed', 'The case is closed with its documented measures.'); return; }
     if (e.target.hasAttribute('data-sync')) { queued = 0; render(); UI.toast('Synced', 'Offline queue uploaded to the exchange.'); return; }
     var sc = e.target.getAttribute('data-screen');
     if (sc) { queued++; mod = 'screen'; render(); return; }
@@ -180,6 +209,7 @@
     }
   });
 
+  document.addEventListener('focusout', function () { setTimeout(function () { if (pending) render(); }, 0); });
   X.subscribe(render);
   render();
 })();

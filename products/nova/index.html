@@ -29,104 +29,226 @@
 <script src="../../assets/app.js"></script>
 <script>
 (function () {
-  var X = window.QareExchange, UI = window.QareUI, esc = UI.esc;
+  var X = window.QareExchange, UI = window.QareUI, esc = UI.esc, C = X.care;
   UI.init('nova');
   var pt = X.PATIENT;
   var mod = 'home';
+  var viewer = 'owner';   // 'owner' or a delegate id: the demo lets you see what each person sees
   var seen = {};
 
   function head(t, d) { return '<div class="sec-head"><div><div class="t">' + esc(t) + '</div><div class="d">' + esc(d) + '</div></div></div>'; }
   function prov(t) { return '<p class="provenance">' + esc(t) + '</p>'; }
+  function ctitle(t) { return '<div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">' + esc(t) + '</div>'; }
+  function ago(ts) { var m = Math.max(0, Math.round((Date.now() - ts) / 60000)); return m < 1 ? 'just now' : m + ' min ago'; }
+  function days(ts) { var d = Math.max(0, Math.ceil((ts - Date.now()) / 86400000)); return d + ' day' + (d === 1 ? '' : 's') + ' left'; }
+
+  var SECTION_SCOPE = { meds: 'medicines', results: 'results', appointments: 'appointments', plan: 'plan' };
+  var OWNER_ONLY = { consent: 1, people: 1, opinion: 1, contribution: 1, log: 1 };
+
+  // Access for the person currently viewing. The owner always can. A delegate only within the scope the patient gave.
+  function can(scope, log) {
+    if (viewer === 'owner') return { allow: true };
+    var req = { patientId: pt.id, flow: 'delegated', recipient: viewer, scope: scope, purpose: 'delegate view' };
+    return log ? X.access(req, { app: 'nova', persona: viewer }) : X.evaluate(req);
+  }
+  function delegateName() { var d = C.DELEGATES.filter(function (x) { return x.id === viewer; })[0]; return d ? d.name : ''; }
+  function blocked(why) { return '<div class="card shadow"><div class="sub" style="font-size:13px">' + esc(why) + '</div></div>'; }
 
   var MODS = [
     { key: 'home', label: 'My health', ic: 'MH', group: 'Record' },
+    { key: 'plan', label: 'My care plan', ic: 'CP', group: 'Record' },
     { key: 'meds', label: 'Medicines', ic: 'MD', group: 'Record' },
     { key: 'results', label: 'Results', ic: 'RS', group: 'Record' },
     { key: 'appointments', label: 'Appointments', ic: 'AP', group: 'Record' },
     { key: 'consent', label: 'Consent and sharing', ic: 'CS', group: 'Control' },
+    { key: 'people', label: 'Family and caregivers', ic: 'FC', group: 'Control' },
+    { key: 'opinion', label: 'Second opinion', ic: 'SO', group: 'Control' },
     { key: 'contribution', label: 'Impact contribution', ic: 'IC', group: 'Control' }
   ];
 
+  function viewerBar() {
+    var opts = [['owner', 'Amara (you)']].concat(C.DELEGATES.map(function (d) { return [d.id, d.name + ', ' + d.rel.toLowerCase()]; }));
+    return '<div class="tenants" style="margin-bottom:12px"><span class="sub2" style="align-self:center;margin-right:6px">Seeing this as</span>' + opts.map(function (o) {
+      var on = o[0] === viewer; return '<button class="tenant' + (on ? ' on' : '') + '" data-viewer="' + esc(o[0]) + '" aria-pressed="' + on + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>';
+  }
+
+  /* ---------- care plan: hospital notice, discharge plan, progress ---------- */
+  function planBody() {
+    var refs = C.referrals({ patientId: pt.id }), dis = refs.filter(function (r) { return r.discharge; });
+    var out = head('My care plan', 'Where you are being sent, what the plan is after you leave hospital, and how your health is changing.');
+    if (!refs.length) out += '<div class="card shadow"><div class="sub">Nothing yet. If your doctor refers you to a hospital, the hospital\'s reply and what to bring appear here.</div></div>';
+    refs.slice().reverse().forEach(function (r) {
+      var body;
+      if (r.status === 'sent') body = '<div class="sub">Dr. ' + esc(r.referrer.replace(/^Dr\.\s*/, '')) + ' asked ' + esc(r.toOrgName) + ' to see you. They have not replied yet.</div>';
+      else if (r.status === 'declined') body = '<div class="sub" style="font-size:13px">' + esc(r.toOrgName) + ' could not take you now: ' + esc(r.response.reason.toLowerCase()) + '. ' + (r.response.alternativeName ? 'They suggested ' + esc(r.response.alternativeName) + '. ' : '') + 'Your doctor will arrange another way and tell you.</div>';
+      else body = '<div class="rec" style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--hairline);font-size:14px"><span class="k" style="color:var(--mid)">Go to</span><span>' + esc(r.notice ? r.notice.unit : r.response.unit) + ', ' + esc(r.toOrgName) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--hairline);font-size:14px"><span style="color:var(--mid)">When</span><span>' + esc(r.notice ? r.notice.expectedBy : '') + '</span></div>' +
+        (r.notice ? '<div style="margin-top:10px;font-size:13px">' + r.notice.instructions.map(function (i) { return '<div>&middot; ' + esc(i) + '</div>'; }).join('') + '</div>' : '') +
+        (r.status === 'admitted' ? '<div style="margin-top:10px"><span class="chip verified">you are admitted</span></div>' : r.status === 'discharged' ? '<div style="margin-top:10px"><span class="chip verified">you went home from hospital</span></div>' : '');
+      out += '<div class="card shadow" style="margin-bottom:14px">' + ctitle('Referral to ' + r.toOrgName) + body + '</div>';
+    });
+    dis.forEach(function (r) {
+      var d = r.discharge, pa = C.postAcute({ patientId: pt.id }).filter(function (x) { return x.dischargeId === d.dischargeId; })[0];
+      out += '<div class="card shadow" style="margin-bottom:14px">' + ctitle('Your plan after hospital') +
+        '<div class="sub" style="font-size:13px;margin-bottom:8px">' + esc(d.plan.interventions.join(', ')) + '. Followed up at home by ' + esc(d.toOrgName) + '.</div>' +
+        (pa && pa.followups.length ? pa.followups.map(function (f) { return '<div class="med"><div><div class="m-d">Home visit, simulated day ' + f.simDay + '</div><div class="m-m">' + esc(f.adherence) + '</div></div><span class="mono">' + f.bpSys + '/' + f.bpDia + '</span></div>'; }).join('') : '<div class="sub">No home visit yet.</div>') + '</div>';
+    });
+    var prog = ['HBA1C', 'BP-SYS'].map(function (code) { return C.outcomeRecord(pt.id, code); }).filter(function (o) { return o.status !== 'unmeasured'; });
+    if (prog.length) out += '<div class="card shadow">' + ctitle('How your health is changing') + prog.map(function (o) {
+      var line = !o.followUp ? 'Starting point ' + o.baseline.value + ' ' + o.measure.unit + '. We will measure again.' : o.change >= 0 ? 'Down from ' + o.baseline.value + ' to ' + o.followUp.value + ' ' + o.measure.unit + '.' : 'Went from ' + o.baseline.value + ' to ' + o.followUp.value + ' ' + o.measure.unit + '.';
+      return '<div class="med"><div><div class="m-d">' + esc(o.measure.label) + '</div><div class="m-m">' + esc(line) + '</div></div>' + (o.status === 'documented' ? '<span class="chip verified">improved, on record</span>' : o.status === 'pending' ? '<span class="chip claimed">still measuring</span>' : '<span class="chip">no clear change</span>') + '</div>'; }).join('') +
+      '<div class="sub2" style="margin-top:8px">Follow-up days are simulated in this demonstration.</div></div>';
+    return out + prov('hospital replies, discharge plans and measurements are events on your record, shown here in plain words');
+  }
+
+  function peopleBody() {
+    var ds = C.delegations(pt.id), active = ds.filter(function (g) { return g.active && (!g.expires || g.expires > Date.now()); });
+    var avail = C.DELEGATES.filter(function (d) { return !active.some(function (g) { return g.recipient === d.id; }); });
+    var scopes = [['medicines', 'Medicines'], ['results', 'Results'], ['appointments', 'Appointments'], ['plan', 'Care plan']];
+    return head('Family and caregivers', 'You choose who can see what, and for how long. They see only what you give them, and you can take it back at any time.') +
+      '<div class="card shadow" style="margin-bottom:14px">' + ctitle('Who can see your record') +
+      (active.length ? active.map(function (g) {
+        var d = C.DELEGATES.filter(function (x) { return x.id === g.recipient; })[0];
+        return '<div class="consent"><div><div class="c-t">' + esc(d ? d.name : g.recipient) + (d ? ', ' + esc(d.rel.toLowerCase()) : '') + '</div><div class="c-m">sees ' + esc((g.scope || []).join(', ')) + ' &middot; ' + (g.expires ? days(g.expires) : 'no end date') + '</div></div><button class="toggle on" data-undelegate="' + esc(g.recipient) + '">Stop sharing</button></div>'; }).join('') : '<div class="sub">No one. Your record is yours alone, apart from your care team.</div>') + '</div>' +
+      (avail.length ? '<div class="card shadow">' + ctitle('Let someone help you') +
+        '<div class="fld" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px"><label for="dl-who" style="font-size:12px;color:var(--mid);font-weight:600">Who</label><select id="dl-who" style="padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-family:var(--font-ui)">' + avail.map(function (d) { return '<option value="' + d.id + '">' + esc(d.name + ', ' + d.rel.toLowerCase()) + '</option>'; }).join('') + '</select></div>' +
+        '<div style="font-size:12px;color:var(--mid);font-weight:600;margin-bottom:6px">What they can see</div>' + scopes.map(function (s) { return '<label style="display:inline-flex;gap:6px;margin-right:14px;font-size:13px"><input type="checkbox" class="dl-scope" value="' + s[0] + '"' + (s[0] === 'medicines' ? ' checked' : '') + '> ' + s[1] + '</label>'; }).join('') +
+        '<div class="fld" style="display:flex;flex-direction:column;gap:4px;margin:12px 0"><label for="dl-days" style="font-size:12px;color:var(--mid);font-weight:600">For how long</label><select id="dl-days" style="padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-family:var(--font-ui)"><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select></div>' +
+        '<button class="btn btn-primary" data-delegate>Share with them</button>' +
+        '<div class="sub2" style="margin-top:10px">They cannot change your sharing choices or see anything you did not tick. If you decide against a treatment, that is your decision to make.</div></div>' : '') +
+      prov('each grant is a scoped, expiring delegation on your consent ledger; every time someone opens something it is written to your access log');
+  }
+
+  function opinionBody() {
+    var shares = C.opinionShares({ patientId: pt.id }).slice().reverse();
+    var org = C.SECOND_OPINION_ORGS[0], items = [['medicines', 'Medicines'], ['results', 'Results'], ['discharge plan', 'Hospital discharge plan']];
+    var log = X.eventsOfType('ACCESS_LOGGED').filter(function (e) { return e.payload.patientId === pt.id && e.payload.purpose === 'second opinion'; });
+    return head('Second opinion', 'Ask another doctor to look at your care. You decide what they see and for how long. Your own doctor is not told unless you want them to be.') +
+      '<div class="card shadow" style="margin-bottom:14px">' + ctitle('Share with another doctor') +
+      '<div style="font-size:13px;margin-bottom:8px">' + esc(X.org(org).name) + ' &middot; ' + esc(X.org(org).personas[0].name) + '</div>' +
+      items.map(function (s) { return '<label style="display:inline-flex;gap:6px;margin-right:14px;font-size:13px"><input type="checkbox" class="so-item" value="' + s[0] + '"' + (s[0] !== 'discharge plan' ? ' checked' : '') + '> ' + s[1] + '</label>'; }).join('') +
+      '<div style="display:flex;flex-direction:column;gap:4px;margin:12px 0"><label for="so-q" style="font-size:12px;color:var(--mid);font-weight:600">Your question</label><input id="so-q" value="Is admission needed for my blood pressure, or can it be managed at home?" style="padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-family:var(--font-ui)"></div>' +
+      '<div style="display:flex;flex-direction:column;gap:4px;margin:12px 0"><label for="so-days" style="font-size:12px;color:var(--mid);font-weight:600">For how long</label><select id="so-days" style="padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-family:var(--font-ui)"><option value="7">7 days</option><option value="30">30 days</option></select></div>' +
+      '<button class="btn btn-primary" data-share-opinion>Share for a second opinion</button></div>' +
+      (shares.length ? '<div class="card shadow" style="margin-bottom:14px">' + ctitle('What you have shared') + shares.map(function (sh) {
+        var g = C.delegations(pt.id).filter(function (x) { return x.recipient === sh.toOrgId; })[0], live = g && g.active && (!g.expires || g.expires > Date.now());
+        return '<div class="consent"><div><div class="c-t">' + esc(sh.toOrgName) + '</div><div class="c-m">' + esc(sh.items.join(', ')) + (live ? ' &middot; ' + days(g.expires) : '') + '</div></div>' + (live ? '<button class="toggle on" data-stop-opinion="' + esc(sh.toOrgId) + '">Stop sharing</button>' : '<span class="chip unmeasured">stopped</span>') + '</div>'; }).join('') + '</div>' : '') +
+      (log.length ? '<div class="card shadow">' + ctitle('Who opened it') + log.slice().reverse().map(function (e) { return '<div class="med"><div><div class="m-d">' + esc(X.org(e.payload.recipient) ? X.org(e.payload.recipient).name : e.payload.recipient) + ' opened ' + esc((e.payload.reason || '').indexOf('Outside') === 0 ? 'an item (blocked)' : 'an item') + '</div><div class="m-m">' + ago(e.ts) + '</div></div><span class="chip ' + (e.payload.allow ? 'verified' : 'inconsistent') + '">' + (e.payload.allow ? 'allowed' : 'blocked') + '</span></div>'; }).join('') + '</div>' : '') +
+      prov('a second opinion is a time-limited grant to one clinic; stopping it takes effect on the next read');
+  }
+
   function moduleBody() {
+    if (viewer !== 'owner' && OWNER_ONLY[mod]) return head('Not shared with you', '') + blocked('This part is only for ' + pt.name.split(' ')[0] + '. ' + delegateName() + ' can see only what ' + pt.name.split(' ')[0] + ' chose to share.');
+    var sc = SECTION_SCOPE[mod];
+    if (sc) { var g = can(sc, false); if (!g.allow) return head('Not shared with you', '') + blocked(g.reason + '. Ask ' + pt.name.split(' ')[0] + ' if you need access.'); }
     var meds = X.prescriptions().filter(function (r) { return r.patientId === pt.id; });
     var results = X.labResults().filter(function (r) { return r.patientId === pt.id; });
     var care = X.consentGranted('pulse') !== false;
     var research = X.consentGranted('research') === true;
     if (mod === 'home') {
-      return head('Hello, Amara', 'Your health in one place, and it is yours. Everything here is assembled from the exchange with your consent.') +
-        '<div class="figs" style="margin-bottom:16px"><div class="fig"><div class="fv">' + meds.length + '</div><div class="fk">active medicines</div></div><div class="fig"><div class="fv">' + results.length + '</div><div class="fk">recent results</div></div><div class="fig"><div class="fv">2</div><div class="fk">upcoming visits</div></div><div class="fig"><div class="fv">' + (research ? 'on' : 'off') + '</div><div class="fk">research sharing</div></div></div>' +
-        '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Summary</div>' +
+      var seesM = can('medicines').allow, seesR = can('results').allow;
+      return head(viewer === 'owner' ? 'Hello, Amara' : pt.name.split(' ')[0] + '\'s health', viewer === 'owner' ? 'Your health in one place, and it is yours. Everything here is assembled from the exchange with your consent.' : delegateName() + ' is seeing only what ' + pt.name.split(' ')[0] + ' chose to share.') +
+        '<div class="figs" style="margin-bottom:16px"><div class="fig"><div class="fv">' + (seesM ? meds.length : '-') + '</div><div class="fk">active medicines</div></div><div class="fig"><div class="fv">' + (seesR ? results.length : '-') + '</div><div class="fk">recent results</div></div><div class="fig"><div class="fv">2</div><div class="fk">upcoming visits</div></div><div class="fig"><div class="fv">' + (research ? 'on' : 'off') + '</div><div class="fk">research sharing</div></div></div>' +
+        '<div class="split"><div class="card shadow">' + ctitle('Summary') +
         '<div class="med"><div><div class="m-d">Conditions</div></div><span>' + esc(pt.conditions.join(', ')) + '</span></div>' +
         '<div class="med"><div><div class="m-d">Allergies</div></div><span style="color:var(--inconsistent)">' + esc(pt.allergies.join(', ')) + '</span></div>' +
         '<div class="med"><div><div class="m-d">Record ID</div></div><span class="mono">' + esc(pt.mrn) + '</span></div></div>' +
-        '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">What changed recently</div>' +
-        (meds.length || results.length ? (meds.slice(-2).map(function (r) { return '<div class="med"><div class="m-d">' + esc(r.drugName) + ' prescribed</div>' + (X.isDispensed(r.rxId) ? '<span class="chip verified">picked up</span>' : '<span class="chip claimed">at pharmacy</span>') + '</div>'; }).join('') + results.slice(-2).map(function (r) { return '<div class="med"><div class="m-d">' + esc(r.testName) + ' result</div>' + (r.flag ? '<span class="chip inconsistent">review</span>' : '<span class="chip verified">normal</span>') + '</div>'; }).join('')) : '<div class="sub">When your clinician prescribes or your lab releases a result, it shows here at once.</div>') +
+        '<div class="card shadow">' + ctitle('What changed recently') +
+        ((seesM && meds.length) || (seesR && results.length) ? ((seesM ? meds.slice(-2) : []).map(function (r) { return '<div class="med"><div class="m-d">' + esc(r.drugName) + ' prescribed</div>' + (X.isDispensed(r.rxId) ? '<span class="chip verified">picked up</span>' : '<span class="chip claimed">at ' + esc(r.pharmacyName || 'pharmacy') + '</span>') + '</div>'; }).join('') + (seesR ? results.slice(-2) : []).map(function (r) { return '<div class="med"><div class="m-d">' + esc(r.testName) + ' result</div>' + (r.flag ? '<span class="chip inconsistent">review</span>' : '<span class="chip verified">normal</span>') + '</div>'; }).join('')) : '<div class="sub">When your clinician prescribes or your lab releases a result, it shows here at once.</div>') +
         '</div></div>' + prov('reads your record from the exchange; nothing here was entered twice');
     }
+    if (mod === 'plan') return planBody();
     if (mod === 'meds') {
       return head('Medicines', 'What you have been prescribed, and whether it is ready at the pharmacy.') +
-        (meds.length ? meds.slice().reverse().map(function (r) { var fresh = !seen['m' + r.rxId]; seen['m' + r.rxId] = true; var disp = X.isDispensed(r.rxId); return '<div class="med' + (fresh ? ' fresh' : '') + '"><div><div class="m-d">' + esc(r.drugName) + ' x' + r.qty + '</div><div class="m-m">prescribed by ' + esc(r.prescriber) + '</div></div>' + (disp ? '<span class="chip verified">picked up</span>' : '<span class="chip claimed">ready at pharmacy</span>') + '</div>'; }).join('') : '<div class="card"><div class="sub">No medicines yet. When your clinician prescribes in Pulse, it appears here live.</div></div>') +
+        (meds.length ? meds.slice().reverse().map(function (r) { var fresh = !seen['m' + r.rxId]; seen['m' + r.rxId] = true; var disp = X.isDispensed(r.rxId); return '<div class="med' + (fresh ? ' fresh' : '') + '"><div><div class="m-d">' + esc(r.drugName) + ' x' + r.qty + '</div><div class="m-m">prescribed by ' + esc(r.prescriber) + (r.pharmacyName ? ' &middot; ' + esc(r.pharmacyName) : '') + '</div></div>' + (disp ? '<span class="chip verified">picked up</span>' : '<span class="chip claimed">ready at pharmacy</span>') + '</div>'; }).join('') : '<div class="card"><div class="sub">No medicines yet. When your clinician prescribes in Pulse, it appears here live.</div></div>') +
         prov('your medicines update the moment a clinician prescribes and a pharmacist dispenses');
     }
     if (mod === 'results') {
       return head('Results', 'Your lab results, in plain terms, as soon as the lab releases them.') +
-        (results.length ? results.slice().reverse().map(function (r) { var fresh = !seen['r' + r.test]; seen['r' + r.test] = true; return '<div class="med' + (fresh ? ' fresh' : '') + '"><div><div class="m-d">' + esc(r.testName) + '</div><div class="m-m">' + esc(r.value) + ' ' + esc(r.unit) + (r.flag ? ' &middot; your clinician will discuss this' : ' &middot; in the normal range') + '</div></div>' + (r.flag ? '<span class="chip inconsistent">out of range</span>' : '<span class="chip verified">normal</span>') + '</div>'; }).join('') : '<div class="card"><div class="sub">No results yet. When the lab in Prism releases one, it appears here.</div></div>') +
+        (results.length ? results.slice().reverse().map(function (r) { var fresh = !seen['r' + (r.orderId || r.test)]; seen['r' + (r.orderId || r.test)] = true; return '<div class="med' + (fresh ? ' fresh' : '') + '"><div><div class="m-d">' + esc(r.testName) + '</div><div class="m-m">' + esc(r.value) + ' ' + esc(r.unit) + (r.flag ? ' &middot; your clinician will discuss this' : ' &middot; in the normal range') + '</div></div>' + (r.flag ? '<span class="chip inconsistent">out of range</span>' : '<span class="chip verified">normal</span>') + '</div>'; }).join('') : '<div class="card"><div class="sub">No results yet. When the lab in Prism releases one, it appears here.</div></div>') +
         prov('results are released to you and your clinician at the same time, no waiting for a callback');
     }
     if (mod === 'appointments') {
       return head('Appointments', 'Your upcoming and past visits across the health system.') +
         '<div class="qt-wrap"><table class="qt"><thead><tr><th>When</th><th>With</th><th>Where</th><th>Status</th></tr></thead><tbody>' +
-        [['24 Oct, 10:00', 'Dr. Imran Chowdhury', 'Bhorosha Primary Care', 'Confirmed'], ['02 Nov, 09:30', 'Diabetes clinic', 'Shapla District Hospital', 'Confirmed'], ['08 Oct', 'Dr. Imran Chowdhury', 'Bhorosha Primary Care', 'Attended']].map(function (r) {
-          return '<tr><td class="mono">' + esc(r[0]) + '</td><td class="nm">' + esc(r[1]) + '</td><td>' + esc(r[2]) + '</td><td>' + (r[3] === 'Attended' ? '<span class="chip">attended</span>' : '<span class="chip verified">confirmed</span>') + '</td></tr>';
+        [['24 Oct, 10:00', 'Dr. Imran Chowdhury', 'Bhorosha Primary Care', 'Confirmed'], ['08 Oct', 'Dr. Imran Chowdhury', 'Bhorosha Primary Care', 'Attended']].map(function (r) {
+          return '<tr><td class="mono">' + esc(r[0]) + '</td><td class="nm">' + esc(r[1]) + '</td><td>' + esc(r[2]) + '</td><td>' + (r[3] === 'Attended' ? '<span class="chip">attended</span>' : '<span class="chip claimed">scheduled</span>') + '</td></tr>';
         }).join('') + '</tbody></table></div>' + prov('appointments are shared with the facility, so they have your record before you arrive');
     }
     if (mod === 'consent') {
       return head('Consent and sharing', 'You decide who sees your record. Two separate keys: your care team, and anonymous research. Granting one never grants the other.') +
         '<div class="consent"><div><div class="c-t">Bhorosha Primary Care</div><div class="c-m">care coordination &middot; your clinician</div></div><button class="toggle ' + (care ? 'on' : 'off') + '" data-consent="pulse">' + (care ? 'Granted' : 'Grant') + '</button></div>' +
-        '<div class="consent"><div><div class="c-t">Shapla District Hospital</div><div class="c-m">care coordination &middot; for your referral</div></div><button class="toggle on" disabled>Granted</button></div>' +
+        '<div class="consent"><div><div class="c-t">Dhaka Tertiary Hospital</div><div class="c-m">care coordination &middot; for your referral</div></div><button class="toggle on" disabled>Granted</button></div>' +
         '<div class="consent"><div><div class="c-t">Anonymous research and impact</div><div class="c-m">secondary use &middot; only de-identified aggregates reach the Commons</div></div><button class="toggle ' + (research ? 'on' : 'off') + '" data-consent="research">' + (research ? 'Sharing' : 'Share') + '</button></div>' +
         '<div class="card shadow" style="margin-top:14px"><div class="sub" style="font-size:13px">Every grant is live and you can withdraw it at any time. A withdrawal is honoured immediately: the research cohort in Lumen drops your record on its next build, and your care team loses access the moment you revoke.</div></div>' +
         prov('the consent ledger is append-only; grant, revoke and every access is recorded');
     }
+    if (mod === 'people') return peopleBody();
+    if (mod === 'opinion') return opinionBody();
     if (mod === 'contribution') {
       return head('Impact contribution', 'With your consent, your de-identified outcomes join the national picture that institutions publish, verified, to raise capital for care. Your identity never leaves your record.') +
-        '<div class="split"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">What you contribute</div>' +
-        '<div class="med"><div class="m-d">Diabetes control outcome</div><span>' + (research ? '<span class="chip verified">contributing</span>' : '<span class="chip">not shared</span>') + '</span></div>' +
-        '<div class="med"><div class="m-d">Access and coverage</div><span>' + (research ? '<span class="chip verified">contributing</span>' : '<span class="chip">not shared</span>') + '</span></div>' +
-        '<div class="sub" style="font-size:13px;margin-top:12px">' + (research ? 'You are sharing anonymised outcomes. This is what lets your clinic and hospital prove their impact and attract funding for better care.' : 'You are not sharing for research. Turn it on in Consent to contribute anonymously.') + '</div></div>' +
-        '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Where it goes</div><div class="sub" style="font-size:13px">Only de-identified, verified aggregates reach the Global Impact Commons. No name, no record ID, nothing that points back to you. You can see the Commons for yourself.</div><a class="btn btn-ghost" style="margin-top:12px" href="' + X.GIC_URL + '" target="_blank" rel="noopener">See the Commons</a></div></div>' +
+        '<div class="split"><div class="card shadow">' + ctitle('What you contribute') +
+        '<div class="med"><div class="m-d">Diabetes control outcome</div><span>' + (research ? '<span class="chip claimed">contributing</span>' : '<span class="chip">not shared</span>') + '</span></div>' +
+        '<div class="med"><div class="m-d">Access and coverage</div><span>' + (research ? '<span class="chip claimed">contributing</span>' : '<span class="chip">not shared</span>') + '</span></div>' +
+        '<div class="sub" style="font-size:13px;margin-top:12px">' + (research ? 'You are sharing anonymised outcomes. They count only once they are verified, and only in groups large enough that no one can be picked out.' : 'You are not sharing for research. Turn it on in Consent to contribute anonymously.') + '</div></div>' +
+        '<div class="card shadow">' + ctitle('Where it goes') + '<div class="sub" style="font-size:13px">Only de-identified, verified aggregates reach the Global Impact Commons. No name, no record ID, nothing that points back to you. You can see the Commons for yourself.</div><a class="btn btn-ghost" style="margin-top:12px" href="' + X.GIC_URL + '" target="_blank" rel="noopener">See the Commons</a></div></div>' +
         prov('your contribution is anonymous and verifiable; the two are not in tension');
     }
     return '';
   }
 
+  var pending = false;
   function render() {
-    var who = { name: pt.name };
+    var ae = document.activeElement;
+    if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && document.getElementById('root').contains(ae)) { pending = true; return; }
+    pending = false;
     var abn = X.labResults().filter(function (r) { return r.patientId === pt.id && r.flag; }).length;
-    var mods = MODS.map(function (m) { return m.key === 'results' ? Object.assign({}, m, { badge: abn || null }) : m; });
+    var notice = C.referrals({ patientId: pt.id }).filter(function (r) { return r.status === 'accepted' || r.status === 'declined'; }).length;
+    var mods = MODS.filter(function (m) { return viewer === 'owner' || !OWNER_ONLY[m.key]; }).map(function (m) { return m.key === 'results' && can('results').allow ? Object.assign({}, m, { badge: abn || null }) : m.key === 'plan' ? Object.assign({}, m, { badge: viewer === 'owner' ? (notice || null) : null }) : m; });
+    var who = viewer === 'owner' ? { n: pt.name, r: 'Patient · owns this record' } : { n: delegateName(), r: 'Caregiver · sees what ' + pt.name.split(' ')[0] + ' shared' };
     document.getElementById('root').innerHTML =
-      UI.topbar({ appName: 'Nova', personaName: pt.name, personaRole: 'Patient · owns this record' }) +
+      UI.topbar({ appName: 'Nova', personaName: who.n, personaRole: who.r }) +
       '<div class="os">' + UI.osNav(mods, mod) +
-        '<main class="os-main"><div style="margin-top:4px">' + moduleBody() + '</div></main>' +
+        '<main class="os-main"><div style="margin-top:4px">' + viewerBar() + moduleBody() + '</div></main>' +
       '</div>';
   }
+  document.addEventListener('focusout', function () { setTimeout(function () { if (pending) render(); }, 0); });
 
   document.addEventListener('click', function (e) {
-    var m = e.target.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); render(); return; }
-    var c = e.target.getAttribute('data-consent');
+    var a = e.target;
+    var vw = a.getAttribute('data-viewer'); if (vw) { viewer = vw; if (OWNER_ONLY[mod] && viewer !== 'owner') mod = 'home'; if (viewer !== 'owner') can('medicines', true); render(); return; }
+    var m = a.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); if (viewer !== 'owner' && SECTION_SCOPE[mod]) { can(SECTION_SCOPE[mod], true); } render(); return; }
+    var c = a.getAttribute('data-consent');
     if (c) {
       var on = (c === 'pulse') ? (X.consentGranted('pulse') !== false) : (X.consentGranted(c) === true);
       X.append(on ? 'CONSENT_REVOKED' : 'CONSENT_GRANTED', { to: c, patientId: pt.id }, { app: 'nova', persona: pt.id });
       UI.toast('Consent', (on ? 'Revoked' : 'Granted') + ' access: ' + (c === 'pulse' ? 'your clinician' : 'anonymous research'));
       return;
     }
+    if (a.hasAttribute('data-delegate')) {
+      var who = document.getElementById('dl-who').value, sc = Array.prototype.map.call(document.querySelectorAll('.dl-scope:checked'), function (x) { return x.value; });
+      if (!sc.length) { UI.toast('Choose something', 'Tick at least one thing they can see.'); return; }
+      C.delegate(pt.id, who, sc, parseInt(document.getElementById('dl-days').value, 10)); UI.toast('Shared', 'They can see only what you ticked.'); return;
+    }
+    var ud = a.getAttribute('data-undelegate'); if (ud) { C.undelegate(pt.id, ud); UI.toast('Stopped', 'They can no longer see your record.'); return; }
+    if (a.hasAttribute('data-share-opinion')) {
+      var items = Array.prototype.map.call(document.querySelectorAll('.so-item:checked'), function (x) { return x.value; });
+      if (!items.length) { UI.toast('Choose something', 'Tick at least one thing to share.'); return; }
+      C.shareOpinion({ patientId: pt.id, patientName: pt.name, toOrgId: C.SECOND_OPINION_ORGS[0], items: items, days: parseInt(document.getElementById('so-days').value, 10), question: document.getElementById('so-q').value });
+      UI.toast('Shared', 'The second-opinion clinic can see what you ticked, until you stop it.'); return;
+    }
+    var so = a.getAttribute('data-stop-opinion'); if (so) { C.stopOpinion(pt.id, so); UI.toast('Stopped', 'They can no longer open your record.'); return; }
   });
 
   X.subscribe(render);
   UI.watchToasts(function (ev) {
-    if (ev.type === 'RX_WRITTEN' && ev.payload.patientId === pt.id) return { k: 'Pulse', msg: 'New prescription on your record: ' + esc(ev.payload.drugName) + '.' };
-    if (ev.type === 'RX_DISPENSED') return { k: 'Cura', msg: 'Your ' + esc(ev.payload.drugName) + ' is ready to collect.' };
-    if (ev.type === 'LAB_RESULT' && ev.payload.patientId === pt.id) return { k: 'Prism', msg: 'A new result is on your record: ' + esc(ev.payload.testName) + '.' };
+    var p = ev.payload;
+    if (ev.type === 'RX_WRITTEN' && p.patientId === pt.id) return { k: 'Pulse', msg: 'New prescription on your record: ' + esc(p.drugName) + ', for ' + esc(p.pharmacyName || 'your pharmacy') + '.' };
+    if (ev.type === 'RX_DISPENSED' && p.patientId === pt.id) return { k: 'Cura', msg: 'Your ' + esc(p.drugName) + ' is ready to collect.' };
+    if (ev.type === 'LAB_RESULT' && p.patientId === pt.id) return { k: 'Prism', msg: 'A new result is on your record: ' + esc(p.testName) + '.' };
+    if (ev.type === 'HOSPITAL_NOTICE' && p.patientId === pt.id) return { k: 'Hospital', msg: esc(p.toOrgName) + ' will see you: ' + esc(p.unit) + ', ' + esc(p.expectedBy.toLowerCase()) + '. See My care plan.' };
+    if (ev.type === 'REFERRAL_RESPONSE' && p.decision === 'declined') return { k: 'Hospital', msg: 'The hospital could not take you now. Your doctor will arrange another way.' };
+    if (ev.type === 'DISCHARGE_COMPLETED' && p.patientId === pt.id) return { k: 'Hospital', msg: 'You are going home. Your plan is in My care plan.' };
     return null;
   });
   render();
