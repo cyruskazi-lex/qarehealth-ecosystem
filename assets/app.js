@@ -266,6 +266,11 @@
     return '<svg class="lchart" viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="bars">' + bars + '</svg>';
   }
 
+  // Persistent marker for content that is demonstration data, not evidence.
+  function illustrative(note) {
+    return '<div class="illus" role="note" style="display:flex;gap:10px;align-items:center;background:var(--claimed-tint);border:1px solid var(--claimed);border-radius:16px;padding:8px 16px;margin:0 0 16px;font-size:12px;color:var(--ink)"><span class="chip claimed">Illustrative</span><span>' + esc(note || 'Illustrative demonstration data. Statuses here are asserted, not evidenced, until a real record is attached.') + '</span></div>';
+  }
+
   /* ---- Shared trust layer: compliance posture + security engine.
      A cross-cutting rail every app expresses, like the exchange and EESG.
      Compliance is a deal-breaker in regulated health and pharma, so this is
@@ -301,7 +306,7 @@
       ['Backup & DR', 'RPO 15 min, RTO 60 min, tested quarterly', 'ok']
     ];
     var SLABEL = { certified: 'Certified', compliant: 'Compliant', attested: 'Attested', ontrack: 'On track', monitored: 'Monitored' };
-    var SCLASS = { certified: 'verified', compliant: 'verified', attested: 'verified', ontrack: 'claimed', monitored: 'claimed' };
+    var SCLASS = { certified: 'claimed', compliant: 'claimed', attested: 'claimed', ontrack: 'claimed', monitored: 'claimed' };
     function forSector(sector) { return FRAMEWORKS.filter(function (f) { return !sector || f.sectors.indexOf(sector) >= 0; }); }
     function badgeLabel(sector) { return sector === 'pharma' ? 'Secure. 21 CFR 11' : 'Secure. HIPAA'; }
     function render(opts) {
@@ -314,16 +319,16 @@
           '<div class="sub2">' + esc(f.scope) + '</div><div class="sub2" style="margin-top:6px">' + esc(f.note) + '</div>' + bar + '</div>';
       }).join('') + '</div>';
       var sec = '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Security engine, live</div><div class="seclist">' +
-        SECURITY.map(function (s) { return '<div class="secrow"><span class="sev ok"></span><div style="flex:1"><div style="font-size:13px;font-weight:600">' + esc(s[0]) + '</div><div class="sub2">' + esc(s[1]) + '</div></div><span class="chip verified">active</span></div>'; }).join('') +
+        SECURITY.map(function (s) { return '<div class="secrow"><span class="sev ok"></span><div style="flex:1"><div style="font-size:13px;font-weight:600">' + esc(s[0]) + '</div><div class="sub2">' + esc(s[1]) + '</div></div><span class="chip claimed">specified</span></div>'; }).join('') +
         '</div></div>';
-      return head + grid + sec +
-        '<p class="provenance">compliance posture is checked continuously and emitted to the Governance pillar; evidence is auditable, never asserted</p>';
+      return illustrative('Compliance statuses are asserted in this demonstration. Each becomes Verified only when a real audit record is attached.') + head + grid + sec +
+        '<p class="provenance">statuses are asserted until an audit record is attached; only then do they emit as Verified to the Governance pillar</p>';
     }
     function eesgMetrics(sector) {
       var fw = forSector(sector), live = fw.filter(function (f) { return f.status !== 'ontrack'; }).length;
       return [
-        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Compliance frameworks live', value: live + ' of ' + fw.length, status: 'Verified' },
-        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Security controls active', value: SECURITY.length + ' of ' + SECURITY.length, status: 'Verified' }
+        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Compliance frameworks live', value: live + ' of ' + fw.length, status: 'Claimed' },
+        { pillar: 'Governance', front: 'Care quality and safety', measure: 'Security controls active', value: SECURITY.length + ' of ' + SECURITY.length, status: 'Claimed' }
       ];
     }
     return { FRAMEWORKS: FRAMEWORKS, SECURITY: SECURITY, forSector: forSector, render: render, badgeLabel: badgeLabel, eesgMetrics: eesgMetrics };
@@ -345,7 +350,7 @@
     esc: esc, money: money, timeOf: timeOf,
     statusChip: statusChip, topbar: topbar, impactPanel: impactPanel,
     tenantBar: tenantBar, osNav: osNav, toast: toast, watchToasts: watchToasts,
-    countUp: countUp, iris: iris, reduce: reduce, trust: Trust, legalFooter: legalFooter,
+    countUp: countUp, iris: iris, reduce: reduce, trust: Trust, legalFooter: legalFooter, illustrative: illustrative,
     lineChart: lineChart, barsChart: barsChart
   };
 })(typeof window !== 'undefined' ? window : this);

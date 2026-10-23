@@ -160,10 +160,10 @@
         '<div class="figs" style="margin-top:12px"><div class="fig"><div class="fv">' + (Math.round(1.8 * scale() * 10) / 10) + 'M</div><div class="fk">packs shipped, qtr</div></div><div class="fig"><div class="fv">99.1%</div><div class="fk">OTIF</div></div></div></div>' +
       '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Quality & compliance</div><div class="rows">' +
         glance('Batch release conformance', '98.7%', 'verified') + glance('Open deviations', String(openDevs().length), openDevs().length > 2 ? 'claimed' : 'verified') +
-        glance('Serialised to last mile', serialPct().toFixed(1) + '%', serialPct() >= 98 ? 'verified' : 'claimed') + glance('Compliance frameworks live', '11 of 12', 'verified') + '</div></div>' +
+        glance('Serialised to last mile', serialPct().toFixed(1) + '%', serialPct() >= 98 ? 'verified' : 'claimed') + glance('Compliance frameworks live', '11 of 12', 'claimed') + '</div></div>' +
       '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">System health</div><div class="rows">' +
         glance('Integrations healthy', '9 of 9', 'verified') + glance('Exchange latency', '48 ms', 'verified') +
-        glance('Uptime, 90 days', '99.98%', 'verified') + glance('Security controls active', '12 of 12', 'verified') + '</div></div>' +
+        glance('Uptime, 90 days', '99.98%', 'verified') + glance('Security controls active', '12 of 12', 'claimed') + '</div></div>' +
       '</div>';
   }
   function glance(label, val, cls) { return '<div class="row" style="padding:8px 10px"><span class="m">' + esc(label) + '</span><span style="display:flex;gap:8px;align-items:center"><span class="v">' + esc(val) + '</span><span class="chip ' + cls + '"></span></span></div>'; }
@@ -176,13 +176,13 @@
     }).join('') + '</div>';
   }
   function trustCard(title, chipLabel, desc, rows, footer) {
-    return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="font-size:13px">' + esc(title) + '</strong><span class="chip verified">' + esc(chipLabel) + '</span></div>' +
+    return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="font-size:13px">' + esc(title) + '</strong><span class="chip claimed">' + esc(chipLabel) + '</span></div>' +
       (desc ? '<div class="sub2">' + esc(desc) + '</div>' : '') +
-      '<div class="rows" style="margin-top:10px">' + rows.map(function(r) { return glance(r[0], r[1], 'verified'); }).join('') + '</div>' +
+      '<div class="rows" style="margin-top:10px">' + rows.map(function(r) { return glance(r[0], r[1], 'claimed'); }).join('') + '</div>' +
       (footer ? '<div class="sub2" style="margin-top:8px;font-size:12px;line-height:1.6">' + esc(footer) + '</div>' : '') + '</div>';
   }
   function evidenceVaultHTML() {
-    return '<div class="cards3">' +
+    return UI.illustrative('Evidence items are illustrative. None is held until a real report, certificate or test record is attached.') + '<div class="cards3">' +
       trustCard('SOC 2 Type II', 'Attested', 'Trust services: security, availability, confidentiality', [['Report period', '12 months'], ['Last audit', 'Aug 2026'], ['Auditor', 'Independent (Big 4)'], ['Exceptions', '0']], 'Full report available under NDA to qualified buyers.') +
       trustCard('Penetration test', 'Clean', 'Independent annual + continuous scanning', [['Last test', 'Sep 2026'], ['Critical findings', '0'], ['High findings', '0'], ['Remediation SLA', '24h critical, 7d high']], '') +
       trustCard('Tenancy & isolation', 'Single-tenant', 'Your data is yours. Isolated, encrypted, never shared.', [['Architecture', 'Single-tenant'], ['Encryption keys', 'Per-tenant, HSM-backed'], ['Data sharing', 'None, by architecture'], ['Cross-tenant access', 'Impossible by design']], '') +
@@ -190,17 +190,17 @@
       trustCard('Data residency', 'Region-pinned', 'Deployment region chosen by customer. No cross-border egress.', [['Primary region', 'Customer-selected'], ['Cross-border egress', 'None'], ['Sovereignty', 'Contractual guarantee']], '') +
       trustCard('Business continuity & DR', 'Tested', 'RPO 15 min, RTO 60 min, tested quarterly', [['RPO', '15 minutes'], ['RTO', '60 minutes'], ['Last DR test', 'Q3 2026'], ['Backup encryption', 'AES-256, separate key']], '') +
       trustCard('Data ownership & AI training', 'Customer-owned', '', [['Data ownership', 'Customer-owned, always'], ['Model training', 'Never used to train models'], ['Data export', 'Standard formats, on request'], ['On termination', 'Returned + destroyed, 30 days']], 'Your data belongs to you. Qare processes it under a DPA. It is never sold, shared across tenants, or used to train any model including Telos. On contract end, returned and securely destroyed.') +
-      '</div>' + prov('evidence is auditable and linkable; certifications track real engagements, not assertions');
+      '</div>' + prov('illustrative until a real audit record is attached; only then does an item become Verified');
   }
   function validationHTML() {
     var systems = [['Nexus core', 'IQ/OQ/PQ', 'Validated', 'VAL-NEX-001'], ['Exchange (HIE)', 'IQ/OQ/PQ', 'Validated', 'VAL-EXC-001'], ['IRIS / Telos', 'IQ/OQ/PQ + ML', 'Validated', 'VAL-IRS-001'], ['Serialisation engine', 'IQ/OQ/PQ', 'Validated', 'VAL-SER-001'], ['Cold-chain monitor', 'IQ/OQ', 'Validated', 'VAL-CCM-001'], ['Audit-trail service', 'IQ/OQ/PQ', 'Validated', 'VAL-AUD-001'], ['E-signature service', 'IQ/OQ/PQ', 'Validated', 'VAL-SIG-001'], ['Reporting engine', 'IQ/OQ', 'In progress', 'VAL-RPT-001']];
     var controls = ['Audit trails are immutable and timestamped', 'Electronic signatures include identity, date, meaning', 'System access is controlled and role-based', 'Data integrity checks on every record', 'Change control with impact assessment', 'Computerised system validation (CSV) per GAMP 5', 'Backup and recovery validated', 'Operational checks at regular intervals'];
     var trail = [['2026-10-22 14:31', 'Batch BATCH-CARD-0342 released', 'Dr. K. Asante', 'e-sig VAL-SIG-4482'], ['2026-10-22 13:07', 'Deviation DV-0218 advanced to CAPA', 'QA Lead', 'e-sig VAL-SIG-4481'], ['2026-10-22 11:44', 'Cold-chain alert acknowledged', 'Ops Manager', 'e-sig VAL-SIG-4480'], ['2026-10-22 09:15', 'Lot hold placed on BATCH-ONCO-0097', 'QP', 'e-sig VAL-SIG-4479'], ['2026-10-21 16:22', 'Change request CR-114 approved', 'QA Director', 'e-sig VAL-SIG-4478']];
     var crs = [['CR-114', 'Exchange latency threshold', 'Approved'], ['CR-113', 'Serialisation algorithm update', 'Approved'], ['CR-112', 'IRIS model v2.3 deployment', 'In review'], ['CR-111', 'Cold-chain alert threshold', 'Approved']];
-    return '<div class="split"><div>' +
+    return UI.illustrative('Validation status, audit entries and change records are illustrative demonstration data.') + '<div class="split"><div>' +
       '<div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Computerised system validation (CSV)</div>' +
       '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>System</th><th>Phase</th><th>Status</th><th>Evidence</th></tr></thead><tbody>' +
-      systems.map(function(s) { var c = s[2] === 'Validated' ? 'verified' : 'claimed';
+      systems.map(function(s) { var c = 'claimed';
         return '<tr><td class="nm">' + esc(s[0]) + '</td><td class="mono">' + esc(s[1]) + '</td><td><span class="chip ' + c + '">' + esc(s[2]) + '</span></td><td class="mono sub2">' + esc(s[3]) + '</td></tr>';
       }).join('') + '</tbody></table></div></div>' +
       '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">21 CFR Part 11 controls</div>' +
@@ -208,31 +208,31 @@
       '</div></div>' +
       '<div><div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Audit trail (recent)</div>' +
       '<div class="feed">' + trail.map(function(t) {
-        return '<div class="ev"><span class="tm" style="flex:0 0 auto;font-size:10px">' + esc(t[0]) + '</span><div style="flex:1"><div style="font-weight:600;font-size:12px">' + esc(t[1]) + '</div><div class="sub2">' + esc(t[2]) + ' . ' + esc(t[3]) + '</div></div><span class="chip verified"></span></div>';
+        return '<div class="ev"><span class="tm" style="flex:0 0 auto;font-size:10px">' + esc(t[0]) + '</span><div style="flex:1"><div style="font-weight:600;font-size:12px">' + esc(t[1]) + '</div><div class="sub2">' + esc(t[2]) + ' . ' + esc(t[3]) + '</div></div><span class="chip claimed"></span></div>';
       }).join('') + '</div></div>' +
       '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Change control log</div>' +
-      '<div class="rows">' + crs.map(function(c) { var cl = c[2] === 'Approved' ? 'verified' : 'claimed'; return glance(c[0] + ': ' + c[1], c[2], cl); }).join('') + '</div></div></div></div>' +
-      prov('every GMP-relevant action traces to an audit entry, a validated signature, and a change-control record');
+      '<div class="rows">' + crs.map(function(c) { var cl = 'claimed'; return glance(c[0] + ': ' + c[1], c[2], cl); }).join('') + '</div></div></div></div>' +
+      prov('illustrative: in production every GMP-relevant action traces to an audit entry, a validated signature and a change-control record');
   }
   function aiGovernanceHTML() {
     var approvals = [['2026-10-22 14:28', 'Lot hold recommendation', 'IRIS suggested hold on BATCH-ONCO-0097', 'QP Dr. K. Asante', 'Approved'], ['2026-10-22 13:01', 'Demand reallocation', 'IRIS suggested 800 units to Chattogram', 'Ops Manager', 'Approved'], ['2026-10-22 11:40', 'EU filing risk alert', 'IRIS flagged 46-day deadline', 'Regulatory Lead', 'Acknowledged'], ['2026-10-22 09:10', 'Supplier qualification', 'IRIS flagged DhakaPack Ltd at risk', 'Procurement', 'Pending']];
-    return '<div class="split">' +
+    return UI.illustrative('Model metrics and approvals are illustrative. Real figures come from a backtest and a signed approval log.') + '<div class="split">' +
       '<div><div class="card shadow" style="margin-bottom:14px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">IRIS / Telos model card</div>' +
       '<div class="rows">' +
-      glance('Model', 'Telos v2.3 (IRIS agent)', 'verified') + glance('Purpose', 'Decision support, never decision', 'verified') + glance('Inputs', 'Exchange events, operational data', 'verified') + glance('Training data', 'Synthetic + anonymised operational', 'verified') + glance('Validation', 'Backtested on 12 mo production data', 'verified') + glance('Sensitivity', '94.2% (demand forecast)', 'verified') + glance('Specificity', '97.1% (quality deviation)', 'verified') + glance('Drift monitoring', 'Weekly, automated', 'verified') + glance('Human sign-off', 'Required for all regulated actions', 'verified') +
+      glance('Model', 'Telos v2.3 (IRIS agent)', 'claimed') + glance('Purpose', 'Decision support, never decision', 'claimed') + glance('Inputs', 'Exchange events, operational data', 'claimed') + glance('Training data', 'Synthetic + anonymised operational', 'claimed') + glance('Validation', 'Backtested on 12 mo production data', 'claimed') + glance('Sensitivity', '94.2% (demand forecast)', 'claimed') + glance('Specificity', '97.1% (quality deviation)', 'claimed') + glance('Drift monitoring', 'Weekly, automated', 'claimed') + glance('Human sign-off', 'Required for all regulated actions', 'claimed') +
       '</div></div>' +
       '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">ISO 42001 AI management</div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="sub2">AI management system implementation</span><span class="chip claimed">72% implemented</span></div>' +
       '<div class="progress"><div class="fill warn" style="width:72%"></div></div>' +
-      '<div class="rows" style="margin-top:10px">' + glance('AI risk assessment', 'Complete', 'verified') + glance('Data governance', 'Complete', 'verified') + glance('Model lifecycle', 'Complete', 'verified') + glance('Bias monitoring', 'In progress', 'claimed') + glance('Third-party AI audit', 'Scheduled Q1 2027', 'claimed') + '</div></div></div>' +
+      '<div class="rows" style="margin-top:10px">' + glance('AI risk assessment', 'Complete', 'claimed') + glance('Data governance', 'Complete', 'claimed') + glance('Model lifecycle', 'Complete', 'claimed') + glance('Bias monitoring', 'In progress', 'claimed') + glance('Third-party AI audit', 'Scheduled Q1 2027', 'claimed') + '</div></div></div>' +
       '<div><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Action-approval log</div>' +
       '<div class="sub2" style="margin-bottom:10px">Every IRIS suggestion and the human who signed it.</div>' +
       '<div class="feed">' + approvals.map(function(a) {
-        var c = a[4] === 'Approved' ? 'verified' : 'claimed';
+        var c = 'claimed';
         return '<div class="ev"><span class="tm" style="flex:0 0 auto;font-size:10px">' + esc(a[0]) + '</span><div style="flex:1"><div style="font-weight:600;font-size:12px">' + esc(a[1]) + '</div><div class="sub2">' + esc(a[2]) + '</div><div class="sub2">' + esc(a[3]) + ' . ' + esc(a[4]) + '</div></div><span class="chip ' + c + '"></span></div>';
       }).join('') + '</div>' +
       '<div class="pitch" style="margin-top:14px"><div class="k">The hard rule</div><div class="l">IRIS never auto-actions a regulated decision. A licensed, identified person signs every quality, safety and regulatory call. The approval log is immutable and auditable.</div></div>' +
-      '</div></div></div>' + prov('AI governance is architectural; every suggestion traces to a model version and a human signatory');
+      '</div></div></div>' + prov('illustrative figures; the rule is real: every suggestion traces to a model version and a human signatory');
   }
 
   /* ---------- N4: integration sub-views ---------- */
@@ -289,7 +289,7 @@
     var total = Math.round((8200000 + 3100000 + 2400000 + 1800000 + 4600000 + 1200000 + 1200000) * sc);
     var cost = Math.round(2800000 * sc);
     var payback = Math.round(cost / (total / 12));
-    return head('ROI & business case', 'The measurable return from operating on Nexus, computed from the same data the rest of the system runs on.') +
+    return UI.illustrative('Projection from illustrative assumptions. The buyer supplies real volumes and costs.') + head('ROI & business case', 'The measurable return from operating on Nexus, computed from the same data the rest of the system runs on.') +
       kpiRow([[money(total, '$'), 'projected annual value', false], [money(cost, '$'), 'annual platform cost', false], [(total / cost).toFixed(1) + 'x', 'ROI multiple', false], [payback + ' months', 'payback period', false]]) +
       '<div class="card shadow" style="margin-bottom:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">Value drivers</div>' +
       '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Value driver</th><th class="num">Annual value</th><th>Mechanism</th></tr></thead><tbody>' +
@@ -299,32 +299,32 @@
       '<div class="cards3">' +
       trustCard('Implementation timeline', '16 weeks', 'Phased deployment: core + exchange, then modules', [['Phase 1 (wk 1 to 4)', 'Core, exchange, auth, compliance'], ['Phase 2 (wk 5 to 8)', 'Supply, manufacturing, quality'], ['Phase 3 (wk 9 to 12)', 'Serialisation, PV, regulatory'], ['Phase 4 (wk 13 to 16)', 'EESG, GIC, go-live']], '') +
       trustCard('Risk factors', 'Managed', 'Implementation risks and mitigations', [['ERP integration', 'Pre-built SAP connector, 3-day setup'], ['Change management', 'Role-based onboarding, IRIS assist'], ['Validation', 'GAMP 5 CSV included in timeline'], ['Data migration', 'Parallel run, reconciliation gate']], '') +
-      trustCard('Comparable deployments', 'Referenced', 'Anonymised results from comparable deployments', [['Mid-size generics (SEA)', 'ROI realised in 5 months'], ['Large innovator (EMEA)', '32% stockout reduction, year 1'], ['Contract manufacturer', 'Batch release 14d to 4d']], 'Named references available under NDA.') +
-      '</div>' + prov('ROI is computed from operational data, not a slide deck; every driver traces to a live module');
+      trustCard('Comparable deployments', 'Placeholder', 'Placeholder results, to be replaced by evidenced references', [['Mid-size generics (SEA)', 'ROI realised in 5 months'], ['Large innovator (EMEA)', '32% stockout reduction, year 1'], ['Contract manufacturer', 'Batch release 14d to 4d']], 'Placeholders only; no named reference is held yet.') +
+      '</div>' + prov('a projection from illustrative assumptions; each driver is recomputed from the buyer\'s own volumes');
   }
 
   /* ---------- N7: references ---------- */
   function referencesHTML() {
     var refs = [
-      { type: 'Case study', title: 'Mid-size generics manufacturer, Southeast Asia', metric: '32% stockout reduction, 5-month payback', detail: 'Deployed core + supply + manufacturing + quality + serialisation. Live dispensing replaced quarterly sampling for demand planning. Cold-chain breach detection went from 48h manual to < 1h automated.', status: 'Published' },
-      { type: 'Case study', title: 'Large innovator, EMEA', metric: 'Batch release 14d to 4d, $4.6M working-capital improvement', detail: 'Full deployment including GxP validation. Validated e-signature and audit trail replaced paper-based release. DSO reduced by 11 days.', status: 'Published' },
-      { type: 'Case study', title: 'Contract manufacturer, South Asia', metric: 'OEE +8pp, right-first-time 97% to 99.4%', detail: 'Manufacturing + quality + serialisation. MES integration via OPC-UA. Deviation cycle time cut by 60%.', status: 'Published' },
-      { type: 'Analyst', title: 'Gartner peer insights', metric: '4.6 / 5.0 (23 reviews)', detail: 'Rated in the Leaders quadrant for pharma operations platforms, H1 2026. Strengths: exchange architecture, EESG integration, GxP validation.', status: 'Published' },
-      { type: 'Analyst', title: 'IDC MarketScape', metric: 'Major player, pharma digital ops', detail: 'Called out for live-demand approach and verified-impact capital pathway. Noted: "The only platform that connects operational compliance to capital markets via a verified framework."', status: 'Published' },
-      { type: 'Compliance', title: 'SOC 2 Type II attestation', metric: '12-month report, 0 exceptions', detail: 'Trust services: security, availability, confidentiality. Full report available under NDA.', status: 'Current' },
-      { type: 'Compliance', title: 'ISO 27001 + 27701 certificates', metric: 'Certified, annual surveillance', detail: 'ISMS + PIMS certified. Covers all environments and data processing.', status: 'Current' },
-      { type: 'Compliance', title: '21 CFR Part 11 validation package', metric: '7 of 8 systems validated', detail: 'CSV documentation per GAMP 5. IQ/OQ/PQ protocols and reports available for audit.', status: 'Current' }
+      { type: 'Case study', title: 'Mid-size generics manufacturer, Southeast Asia (placeholder)', metric: 'Target: 30% stockout reduction', detail: 'Placeholder for a deployed customer. Replace with a named, evidenced case study before external use.', status: 'Illustrative' },
+      { type: 'Case study', title: 'Large innovator, EMEA (placeholder)', metric: 'Target: batch release 14d to 4d', detail: 'Placeholder for a deployed customer. Replace with a named, evidenced case study before external use.', status: 'Illustrative' },
+      { type: 'Case study', title: 'Contract manufacturer, South Asia (placeholder)', metric: 'Target: right-first-time above 99%', detail: 'Placeholder for a deployed customer. Replace with a named, evidenced case study before external use.', status: 'Illustrative' },
+      { type: 'Analyst', title: 'Analyst peer ratings (placeholder)', metric: 'Not yet rated', detail: 'No analyst rating is held. This slot is reserved for a real, cited rating.', status: 'Illustrative' },
+      { type: 'Analyst', title: 'Independent market assessment (placeholder)', metric: 'Not yet assessed', detail: 'No assessment is held. This slot is reserved for a real, cited assessment.', status: 'Illustrative' },
+      { type: 'Compliance', title: 'SOC 2 Type II attestation (planned)', metric: 'Not yet held', detail: 'Shown as a target. Becomes Verified only when the report is attached.', status: 'Illustrative' },
+      { type: 'Compliance', title: 'ISO 27001 + 27701 (planned)', metric: 'Not yet held', detail: 'Shown as a target. Becomes Verified only when the certificates are attached.', status: 'Illustrative' },
+      { type: 'Compliance', title: '21 CFR Part 11 validation package (planned)', metric: 'Not yet held', detail: 'Shown as a target. Becomes Verified only when the validation package is attached.', status: 'Illustrative' }
     ];
-    return head('Proof & references', 'Case studies, analyst coverage, and compliance artefacts. Named references available under NDA.') +
+    return UI.illustrative('Every item on this page is a placeholder or a target. Nothing here is a held certificate, rating or customer reference.') +
+      head('Proof & references', 'The slots for case studies, analyst coverage and compliance artefacts, and what each needs before it counts.') +
       '<div class="cards3">' + refs.map(function(r) {
-        var c = r.status === 'Current' ? 'verified' : 'claimed';
-        return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--mid)">' + esc(r.type) + '</span><span class="chip ' + c + '">' + esc(r.status) + '</span></div>' +
+        return '<div class="card shadow"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--mid)">' + esc(r.type) + '</span><span class="chip claimed">' + esc(r.status) + '</span></div>' +
           '<div style="font-family:var(--font-brand);font-weight:700;font-size:13px;margin-bottom:6px">' + esc(r.title) + '</div>' +
           '<div style="font-weight:600;font-size:13px;color:var(--accent);margin-bottom:6px">' + esc(r.metric) + '</div>' +
           '<div class="sub2">' + esc(r.detail) + '</div></div>';
       }).join('') + '</div>' +
-      '<div class="pitch" style="margin-top:16px"><div class="k">Request a reference call</div><div class="l">Named customer references, full case studies, and compliance artefacts (SOC 2 report, ISO certificates, validation packages) are available under NDA. Contact your Qare account team.</div></div>' +
-      prov('every reference traces to a real deployment; nothing here is aspirational');
+      '<div class="pitch" style="margin-top:16px"><div class="k">Reference calls</div><div class="l">No customer reference is available yet. When one is, it is listed here with the contact route and what was measured.</div></div>' +
+      prov('placeholders only; each is replaced by a named, evidenced reference before any external demonstration');
   }
 
   /* ================= THE ELEMENT LIBRARY =================
@@ -785,7 +785,7 @@
     if (/capacity|sop|forecast|plan/.test(s)) return A('Capacity utilisation is 72% and the forecast tracks within band, so you are inside capacity. The forecast is built from live dispensing, so S&OP and operations never diverge.', []);
     if (/training|workforce|hse|safety incident/.test(s)) return A('GMP training is 94% current with 12 qualifications overdue; lost-time injury rate is 0.3. Both are EESG emitters tied to the record that gates release.', []);
     if (/roi|return|business case|payback|cost/.test(s)) { var sc = scale(), total = Math.round((8200000+3100000+2400000+1800000+4600000+1200000+1200000)*sc); return A('Projected annual value is ' + money(total, '$') + ' against a ' + money(Math.round(2800000*sc), '$') + ' platform cost, a ' + (total/(2800000*sc)).toFixed(1) + 'x multiple. The biggest driver is stockout prevention from live demand, worth ' + money(Math.round(8200000*sc), '$') + '. Payback is under 2 months.', [{ label: 'Open ROI', kind: 'evidence', q: 'roi' }]); }
-    if (/reference|case study|analyst|proof|gartner/.test(s)) return A('Three published case studies from comparable deployments, plus Gartner and IDC coverage. SOC 2, ISO 27001/27701, and the Part 11 validation package are current. Named references under NDA.', [{ label: 'Open references', kind: 'evidence', q: 'reference' }]);
+    if (/reference|case study|analyst|proof|gartner/.test(s)) return A('Every reference on that page is a placeholder or a target. No case study, analyst rating, SOC 2 report or ISO certificate is held yet, so none is shown as Verified. Each becomes Verified when the real record is attached.', [{ label: 'Open references', kind: 'evidence', q: 'reference' }]);
     if (/security|data own|tenancy|soc|pen test|encrypt|privacy/.test(s)) return A('Single-tenant architecture with per-tenant HSM-backed encryption keys. SOC 2 Type II attested, last pen test clean (Sep 2026, 0 critical). Your data is yours, never used to train models, returned and destroyed on contract end within 30 days. Full evidence vault in Security & Compliance.', [{ label: 'Open evidence vault', kind: 'evidence', q: 'evidence vault' }]);
     if (/valid|csv|part 11|gamp|audit trail|e.sig/.test(s)) return A('7 of 8 systems validated per GAMP 5 CSV. Audit trails are immutable with timestamps. Electronic signatures include identity, date, and meaning. Change control runs through impact assessment. The reporting engine is the one still in progress.', [{ label: 'Open validation', kind: 'evidence', q: 'validation' }]);
     if (/ai gov|model card|iris gov|42001|bias/.test(s)) return A('Telos v2.3 powers IRIS. Sensitivity 94.2% on demand, specificity 97.1% on quality deviations. Drift monitored weekly. ISO 42001 is at 72%. The hard rule: IRIS never auto-actions a regulated decision. Every suggestion has a human signatory in the approval log.', [{ label: 'Open AI governance', kind: 'evidence', q: 'ai governance' }]);
