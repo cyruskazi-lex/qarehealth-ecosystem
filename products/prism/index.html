@@ -22,6 +22,7 @@
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
 <script src="../../assets/spine.js"></script>
+<script src="../../assets/care.js"></script>
 <script src="../../assets/app.js"></script>
 <script>
 (function () {
@@ -54,10 +55,9 @@
   var TAT = [{ d: 'Chemistry', med: 4.2, tgt: 6 }, { d: 'Hematology', med: 2.1, tgt: 4 }, { d: 'Microbiology', med: 38, tgt: 48 }, { d: 'Serology', med: 3.4, tgt: 6 }];
 
   function exchangeOrders() {
-    // Amara's standing orders from the record: one row per test not yet released.
-    var done = X.labResults().map(function (r) { return r.test; });
-    return X.LAB_TESTS.filter(function (t) { return done.indexOf(t.code) < 0; }).map(function (t) {
-      return { id: 'ORD-' + t.code, pt: 'A. Okonkwo', mrn: 'QH-PT-100482', dept: 'Chemistry', tests: [t.name], prio: 'Routine', status: 'Received', coll: '08:20', exchange: true, test: t };
+    // Orders a clinician sent to this lab over the exchange, not yet resulted.
+    return X.care.labOrders({ labOrgId: cur.id }).filter(function (o) { return !o.result; }).map(function (o) {
+      return { id: o.orderId, pt: o.patientName, mrn: o.patientId, dept: 'Chemistry', tests: [o.testName], prio: o.urgency, status: 'Received', coll: new Date(o.ts).toTimeString().slice(0, 5), exchange: true, order: o, from: o.clinicName };
     });
   }
 
@@ -85,14 +85,14 @@
     var exOrders = exchangeOrders();
     if (mod === 'orders') {
       var all = exOrders.concat(INTERNAL);
-      return head('Order queue', all.length + ' active orders across ' + DEPTS.length + ' departments. Orders from the exchange carry the clinician and patient from the record.') +
+      return head('Order queue', all.length + ' active orders across ' + DEPTS.length + ' departments. Orders from the exchange carry the clinic and patient from the visit.') + (exOrders.length ? '' : '<div class="card shadow" style="margin-bottom:14px"><div class="sub">No orders from the exchange for ' + esc(cur.name) + '. Order a test in Pulse and it lands here live.</div></div>') +
         kpis([[all.length, 'active orders'], [all.filter(function (o) { return o.prio === 'STAT'; }).length, 'STAT'], [exOrders.length, 'from exchange'], ['6h', 'target TAT']]) +
         '<div class="qt-wrap"><table class="qt"><thead><tr><th>Order</th><th>Patient</th><th>Department</th><th>Tests</th><th>Priority</th><th>Status</th><th></th></tr></thead><tbody>' +
         all.map(function (o) {
           return '<tr><td><span class="mono">' + esc(o.id) + '</span>' + (o.exchange ? ' <span class="chip iris">exchange</span>' : '') + '</td>' +
             '<td><div class="nm">' + esc(o.pt) + '</div><div class="sub2 mono">' + esc(o.mrn) + '</div></td>' +
             '<td>' + esc(o.dept) + '</td><td>' + esc(o.tests.join(', ')) + '</td><td>' + prioTag(o.prio) + '</td><td>' + statusChip(o.status) + '</td>' +
-            '<td style="text-align:right">' + (o.exchange ? '<button class="btn btn-primary btn-sm" data-release="' + esc(o.test.code) + '">Result and release</button>' : '<button class="btn btn-ghost btn-sm">Open</button>') + '</td></tr>';
+            '<td style="text-align:right">' + (o.exchange ? '<button class="btn btn-primary btn-sm" data-release="' + esc(o.id) + '">Result and release</button>' : '<button class="btn btn-ghost btn-sm">Open</button>') + '</td></tr>';
         }).join('') +
         '</tbody></table></div>' + prov('reads order events from the exchange; releasing writes a LAB_RESULT the clinician and patient see live');
     }
@@ -159,7 +159,7 @@
     if (mod === 'impact') {
       return head('Impact and GIC', 'What this lab contributes to the EESG Health Impact framework, and its verified publication to the Commons.') +
         UI.impactPanel(cur, { measures: [
-          { front: 'Care quality and safety', measure: 'QC pass rate', value: '99.3%', status: 'Verified' },
+          { front: 'Care quality and safety', measure: 'QC pass rate', value: '99.3%', status: 'Claimed' },
           { front: 'Access and coverage', measure: 'Median turnaround', value: '4.1h', status: 'Claimed' },
           { front: 'Health outcomes', measure: 'Critical results called < 1h', value: '96%', status: 'Claimed' }
         ] });
@@ -187,15 +187,15 @@
     var m = e.target.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); render(); return; }
     var rel = e.target.getAttribute('data-release');
     if (rel) {
-      var test = X.labTest(rel);
-      var val = rel === 'HBA1C' ? 8.1 : rel === 'CREAT' ? 1.0 : 180;
-      X.append('LAB_RESULT', { test: rel, testName: test.name, value: val, unit: test.unit, flag: val > test.flagAbove, patientId: 'PT-AMARA', patientName: 'Amara Okonkwo', labOrgId: cur.id }, { app: 'prism', persona: cur.personas[0].id });
-      UI.toast('Released', test.name + ' ' + val + ' ' + test.unit + ' is on the record.');
+      var ord = X.care.labOrders({ labOrgId: cur.id }).filter(function (o) { return o.orderId === rel && !o.result; })[0];
+      if (!ord) return;
+      var ev = X.care.releaseLab(ord, cur.id, cur.personas[0].id);
+      UI.toast('Released', ev.payload.testName + ' ' + ev.payload.value + ' ' + ev.payload.unit + ' is on the visit record (simulated analyzer).');
       return;
     }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Diagnostic access and quality, Q current', status: 'Verified' }, { app: 'prism', persona: cur.personas[0].id });
-      UI.toast('Published to GIC', cur.name + ' posted a verified record to the Commons.');
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Diagnostic access and quality, Q current', status: 'Claimed' }, { app: 'prism', persona: cur.personas[0].id });
+      UI.toast('Published to GIC', cur.name + ' posted a record to the Commons.');
     }
   });
 

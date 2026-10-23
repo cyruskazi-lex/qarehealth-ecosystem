@@ -10,11 +10,17 @@
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="../../assets/tokens.css" />
 <link rel="stylesheet" href="../../assets/qare.css" />
+<style>
+  .refsel select { font-family: var(--font-ui); font-size: 12px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--ink); max-width: 230px; }
+  .refsel select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  .refnote { font-size: 12px; color: var(--mid); }
+</style>
 </head>
 <body>
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
 <script src="../../assets/spine.js"></script>
+<script src="../../assets/care.js"></script>
 <script src="../../assets/app.js"></script>
 <script src="../../assets/auth.js"></script>
 <script>
@@ -243,6 +249,26 @@
   function outcomeRoot() { var t = []; outcomeGroups().forEach(function (g) { if (g.n >= MIN_COHORT) t = t.concat(g.traces); }); return merkleRoot(t); }
 
   function beds() { var t = 0, o = 0; cur.units.forEach(function (u) { t += u.total; o += u.occ; }); o += X.admissions().filter(function (a) { return a.orgId === cur.id; }).length; return { total: t, occ: Math.min(t, o) }; }
+  function receivingOrg() { var id = X.care.RECEIVING.filter(function (i) { return X.org(i) && X.org(i).name === cur.name; })[0]; return id ? X.org(id) : null; }
+  function clinicRefs() { var o = receivingOrg(); return o ? X.care.referrals({ toOrgId: o.id }) : []; }
+  function clinicPending() { return clinicRefs().filter(function (r) { return r.status === 'sent'; }); }
+  function clinicReferralsHTML() {
+    var o = receivingOrg(); if (!o) return '';
+    var list = clinicRefs();
+    var others = X.orgsFor('apex').filter(function (x) { return x.id !== o.id; });
+    var chip = { sent: '<span class="chip claimed">awaiting your reply</span>', accepted: '<span class="chip verified">accepted</span>', declined: '<span class="chip inconsistent">declined</span>', admitted: '<span class="chip verified">admitted</span>' };
+    return '<div class="card shadow" style="margin-bottom:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:4px">Referrals from clinics</div>' +
+      '<div class="refnote" style="margin-bottom:10px">Sent by a doctor in Pulse with the reason, current medicines and results. You accept or decline. A decline goes back to the doctor with your reason.</div>' +
+      (list.length ? '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Patient</th><th>From</th><th>Reason</th><th>Shared</th><th>Status</th><th></th></tr></thead><tbody>' + list.slice().reverse().map(function (r) {
+        var act = '';
+        if (r.status === 'sent') {
+          act = '<div class="refsel" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center"><select id="ru-' + esc(r.referralId) + '" aria-label="Unit">' + cur.units.map(function (u) { return '<option>' + esc(u.name) + '</option>'; }).join('') + '</select><button class="btn btn-primary btn-sm" data-ref-accept="' + esc(r.referralId) + '">Accept</button></div>' +
+            '<div class="refsel" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center;margin-top:6px"><select id="rr-' + esc(r.referralId) + '" aria-label="Reason for declining"><option>No bed available in the unit needed</option><option>Needs a service we do not offer</option><option>Treat closer to home first</option><option>Information missing from the referral</option></select><select id="ra-' + esc(r.referralId) + '" aria-label="Suggest another hospital"><option value="">No suggestion</option>' + others.map(function (x) { return '<option value="' + x.id + '">' + esc(x.name) + '</option>'; }).join('') + '</select><button class="btn btn-ghost btn-sm" data-ref-decline="' + esc(r.referralId) + '">Decline</button></div>';
+        } else if (r.status === 'accepted') act = '<button class="btn btn-primary btn-sm" data-ref-admit="' + esc(r.referralId) + '">Patient arrived, admit</button>';
+        return '<tr><td class="nm">' + esc(r.patientName) + '<div class="sub2">' + esc(r.urgency) + '</div></td><td>' + esc(r.fromOrgName) + '<div class="sub2">' + esc(r.referrer) + '</div></td><td>' + esc(r.reason) + '</td>' +
+          '<td class="sub2">' + r.shared.medicines.length + ' medicines, ' + r.shared.results.length + ' results</td><td>' + chip[r.status] + (r.status === 'declined' ? '<div class="sub2">' + esc(r.response.reason) + '</div>' : r.notice ? '<div class="sub2">' + esc(r.notice.unit) + '</div>' : '') + '</td><td style="text-align:right">' + act + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="refnote">No clinic referrals yet. Open Pulse, start a visit and refer a patient to ' + esc(cur.name) + '; it appears here live.</div>') + '</div>';
+  }
   function incoming() { var admitted = X.admissions().map(function (a) { return a.household; }); return X.referrals().filter(function (r) { return admitted.indexOf(r.household) < 0; }); }
   function facilityReadmit() { return readmitHist.length ? readmitHist[readmitHist.length - 1] : 6.1; }
   function lowStock() { return inventory.filter(function (i) { return i.status === 'low'; }); }
@@ -721,7 +747,7 @@
         var b = beds(), inc = incoming(), low = lowStock();
         function tile(v, k, mod) { return '<div class="fig click" data-mod="' + mod + '"><div class="fv">' + v + '</div><div class="fk">' + esc(k) + '</div></div>'; }
         var tiles = '<div class="figs" style="margin-bottom:16px">' +
-          tile(b.occ + '/' + b.total, 'beds occupied', 'flow') + tile(inc.length, 'referrals waiting', 'intake') +
+          tile(b.occ + '/' + b.total, 'beds occupied', 'flow') + tile(inc.length + clinicPending().length, 'referrals waiting', 'intake') +
           tile(inWindow().filter(function (d) { return d.risk === 'high'; }).length, 'high readmission risk', 'transitions') +
           tile(facilityReadmit().toFixed(1) + '%', '30-day readmission', 'quality') + tile(low.length, 'supplies below par', 'inventory') + '</div>';
         return head('Command', 'The whole house at a glance. Every tile opens its detail.') + tiles +
@@ -737,10 +763,10 @@
       } },
 
     { key: 'intake', label: 'Referral intake', ic: 'RI', group: 'Today', desc: 'Community referrals from Bridge. Admit or redirect.',
-      rails: { hie: ['REFERRAL', 'ADMISSION'], eesg: [{ pillar: 'Social', front: 'Access and coverage', measure: 'Referrals accepted, quarter', value: '1,240', status: 'Verified' }], gic: true }, agents: ['Flow', 'Clinical'],
+      rails: { hie: ['REFERRAL', 'ADMISSION'], eesg: [{ pillar: 'Social', front: 'Access and coverage', measure: 'Referrals accepted, quarter', value: '1,240', status: 'Claimed' }], gic: true }, agents: ['Flow', 'Clinical'],
       render: function () {
         var inc = incoming();
-        return head('Referral intake', 'Community referrals from Bridge, field screening attached.') +
+        return head('Referral intake', 'Referrals from clinics and community health workers. Accept, decline with a reason, or admit.') + clinicReferralsHTML() +
           (inc.length ? '<div class="qt-wrap"><table class="qt"><thead><tr><th>Patient</th><th>From</th><th>Reason</th><th>Screening</th><th></th></tr></thead><tbody>' +
             inc.slice().reverse().map(function (r) { return '<tr><td class="nm">' + esc(r.patientName) + '</td><td>' + esc(r.village) + '</td><td>' + esc(r.reason) + '</td><td><span class="chip claimed">field-screened</span></td><td style="text-align:right"><button class="btn btn-primary btn-sm" data-admit="' + esc(r.household) + '">Admit</button></td></tr>'; }).join('') + '</tbody></table></div>'
             : '<div class="card"><div class="sub">No referrals waiting. Open Bridge in another tab and refer a household; it appears here live.</div></div>') +
@@ -1237,6 +1263,14 @@
     var tn = e.target.getAttribute('data-tenant'); if (tn) { cur = profileById(tn); mod = 'command'; seedState(); render(); return; }
     var mm = e.target.closest('[data-mod]'); if (mm) { mod = mm.getAttribute('data-mod'); render(); return; }
     var tg = e.target.getAttribute('data-toggle'); if (tg) { var mobj = moduleByKey(tg); if (mobj && !mobj.core) { if (!overrides[cur.id]) overrides[cur.id] = {}; overrides[cur.id][tg] = !isOn(tg); render(); } return; }
+    var ra = e.target.getAttribute('data-ref-accept'), rd = e.target.getAttribute('data-ref-decline'), rm = e.target.getAttribute('data-ref-admit');
+    if (ra) { X.care.respondReferral({ referralId: ra, decision: 'accepted', unit: document.getElementById('ru-' + ra).value, by: cur.persona.name, personaId: cur.persona.id }); UI.toast('Accepted', 'The doctor and the patient are notified.'); render(); return; }
+    if (rd) {
+      var alt = document.getElementById('ra-' + rd).value;
+      var rs = X.care.respondReferral({ referralId: rd, decision: 'declined', reason: document.getElementById('rr-' + rd).value, alternativeOrgId: alt || null, by: cur.persona.name, personaId: cur.persona.id });
+      UI.toast(rs && rs.ok ? 'Declined' : 'Not sent', rs && rs.ok ? 'The doctor sees your reason.' : (rs ? rs.reason : '')); render(); return;
+    }
+    if (rm) { X.care.admit(rm, cur.id, cur.persona.id); UI.toast('Admitted', 'Bed state updated and the record is open.'); render(); return; }
     var hh = e.target.getAttribute('data-admit'); if (hh) { var r = X.referrals().filter(function (x) { return x.household === hh; })[0]; X.append('ADMISSION', { household: hh, patientName: r ? r.patientName : hh, orgId: cur.id }, { app: 'apex', persona: cur.persona.id }); UI.toast('Admitted', (r ? r.patientName : hh) + ' admitted. Bed state updated.'); render(); return; }
     var dp = e.target.getAttribute('data-discharge'); if (dp) {
       var dc = { id: 'DC-' + rnd(300, 999), patient: dp, at: Date.now(), risk: 'low', status: 'in-window', to: 'Union Health Outreach' };
@@ -1287,9 +1321,10 @@
     }
   });
 
-  X.subscribe(function (ev) { if (ev) { if (mod === 'intake' || mod === 'command' || mod === 'flow' || mod === 'orders') render(); else paintLive(false); } });
+  X.subscribe(function (ev) { if (ev) { if (mod === 'intake' || mod === 'command' || mod === 'flow' || mod === 'orders') { var ae = document.activeElement; if (!(mod === 'intake' && ae && ae.tagName === 'SELECT')) render(); } else paintLive(false); } });
   UI.watchToasts(function (ev) {
     if (ev.type === 'REFERRAL' && ev.actor && ev.actor.app === 'bridge') return { k: 'Bridge', msg: esc(ev.payload.patientName) + ' referred from ' + esc(ev.payload.village) + '.' };
+    if (ev.type === 'CLINIC_REFERRAL') return { k: 'Pulse', msg: esc(ev.payload.patientName) + ' referred by ' + esc(ev.payload.referrer) + ' (' + esc(ev.payload.urgency) + ').' };
     if (ev.type === 'LAB_RESULT') return { k: 'Prism', msg: 'Result returned for ' + esc(ev.payload.testName || 'a test') + '.' };
     return null;
   });

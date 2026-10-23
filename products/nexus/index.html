@@ -15,6 +15,7 @@
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
 <script src="../../assets/spine.js"></script>
+<script src="../../assets/care.js"></script>
 <script src="../../assets/app.js"></script>
 <script src="../../assets/auth.js"></script>
 <script>
@@ -86,6 +87,7 @@
       if (e.type === 'DEMAND_SIGNAL' && p.maker === 'ORG-NEXAGEN') {
         seedById[e.id] = 1; pushDemand(p.drug || 'CARDINEX-10', p.qty || 1, p.region || 'Dhaka', e.ts, 'exchange', true);
       } else if (e.type === 'RX_DISPENSED') {
+        if (X.eventsOfType('DEMAND_SIGNAL').some(function (s) { return s.payload.rxId && s.payload.rxId === p.rxId; })) { seedById[e.id] = 1; return; }
         var code = p.drug || p.code, d = code ? X.drug(code) : null;
         if (d && d.maker === 'ORG-NEXAGEN') { seedById[e.id] = 1; pushDemand(code, p.qty || 1, p.region || 'Dhaka', e.ts, 'exchange', true); }
       } else if (e.type === 'COLD_CHAIN_ALERT' && (p.maker === 'ORG-NEXAGEN' || !p.maker)) {
@@ -132,6 +134,17 @@
         '<div class="sub2">' + esc(d.region) + ' &middot; ' + (d.src === 'exchange' ? 'live dispense from a connected pharmacy' : 'connected pharmacy') + '</div></div>' +
         '<span class="chip iris">reallocate</span></div>';
     }).join('') : '<div class="sub">Quiet. Dispense a Nexagen product in Cura and it lands here live.</div>') + '</div>';
+  }
+  function supplyDetailHTML() {
+    var sig = X.care.supplySignals('ORG-NEXAGEN').slice(-10).reverse();
+    return '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:4px">Dispensing detail</div>' +
+      '<div style="font-size:12px;color:var(--mid);margin-bottom:10px">Each dispense, as it happens: where, what, which batch, who prescribed. The patient\'s name never arrives. Clinical context arrives only when the patient has said yes.</div>' +
+      (sig.length ? '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Time</th><th>Product</th><th class="num">Packs</th><th>Batch and pack</th><th class="num">Value</th><th>Pharmacy</th><th>Prescriber facility</th><th>Clinical context</th></tr></thead><tbody>' +
+        sig.map(function (g) {
+          return '<tr><td class="mono sub2">' + UI.timeOf(g.ts) + '</td><td class="nm">' + esc(g.drugName) + '</td><td class="num">' + g.qty + '</td><td class="mono sub2">' + esc(g.batch) + '<br>' + esc(g.packSerial) + '</td><td class="num">' + esc(g.amount) + ' ' + esc(g.currency) + '</td>' +
+            '<td>' + esc(g.pharmacyName) + '<div class="sub2">' + esc(g.region) + '</div></td><td>' + esc(g.prescriberOrgName) + '<div class="sub2">' + esc(g.prescriberRole) + '</div></td>' +
+            '<td>' + (g.indication ? esc(g.indication) + '<div class="sub2">' + esc(g.ageBand) + ', ' + esc(g.sex) + '</div>' : '<span class="chip unmeasured">withheld</span><div class="sub2">no patient opt-in</div>') + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="sub">No granular dispenses yet. Dispense a Nexagen product in Cura and the detail lands here live.</div>') + '</div>';
   }
   function coldCardHTML() {
     var bars = cold.series.slice(-14).map(function (t) { return '<i class="' + (t > 8 || t < 2 ? 'hot' : '') + '" style="height:' + Math.max(8, Math.min(100, (t / 12) * 100)) + '%"></i>'; }).join('');
@@ -492,7 +505,7 @@
 
     { key: 'demand', label: 'Demand', ic: 'DM', group: 'Commercial',
       desc: 'Live demand by product and region from every connected pharmacy.',
-      rails: { exchange: ['DEMAND_SIGNAL', 'RX_DISPENSED'], eesg: [{ pillar: 'Social', front: 'Access and coverage', measure: 'Patients reached, quarter', value: '1.8M', unit: '', status: 'Verified' }], gic: true },
+      rails: { exchange: ['DEMAND_SIGNAL', 'RX_DISPENSED'], eesg: [{ pillar: 'Social', front: 'Access and coverage', measure: 'Patients reached, quarter', value: '1.8M', unit: '', status: 'Claimed' }], gic: true },
       agents: ['Demand', 'Commercial'],
       render: function () {
         var t = totals();
@@ -501,6 +514,7 @@
           '<div class="split" style="margin-bottom:16px"><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Demand by region, this quarter</div>' + UI.barsChart(REGIONS.map(function(r) { var c = demand.filter(function(d){return d.region===r}).length; return {l:r,v:[c]}; }), {h:80}) + '</div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Product mix</div>' + UI.barsChart([{l:'CardiNex-10',v:[demand.filter(function(d){return d.code==='CARDINEX-10'}).length]},{l:'OncoNex-100',v:[demand.filter(function(d){return d.code!=='CARDINEX-10'}).length]}], {h:80}) + '</div></div>' +
           '<div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Signal stream</div>' + feedHTML(12) + '</div>' +
+          supplyDetailHTML() +
           prov('demand is the sum of real dispensing events, not a forecast model');
       } },
 
@@ -868,7 +882,7 @@
     }
   });
 
-  X.subscribe(function (ev) { if (ev) { foldExchange(); if (mod === 'quality' || mod === 'command') render(); else paintLive(false); } });
+  X.subscribe(function (ev) { if (ev) { foldExchange(); if (mod === 'quality' || mod === 'command' || (mod === 'demand' && ev.type === 'SUPPLY_SIGNAL')) render(); else paintLive(false); } });
   UI.watchToasts(function (ev) {
     if (ev.type === 'DEMAND_SIGNAL' && ev.payload.maker === 'ORG-NEXAGEN') return { k: 'Cura', msg: esc(ev.payload.drugName || nameOf(ev.payload.drug)) + ' dispensed in ' + esc(ev.payload.region || 'the field') + '. Demand updated.' };
     if (ev.type === 'COLD_CHAIN_ALERT') return { k: 'Relay', msg: 'Cold-chain breach on ' + esc(ev.payload.product || cold.product) + '. Deviation raised in Quality.' };

@@ -252,7 +252,10 @@
   }
   function barsChart(groups, opts) {
     // groups: [{label, a, b?}]; a and optional b are two series per group.
-    opts = opts || {}; var w = 560, h = opts.h || 150, pad = 8, padB = 18, n = groups.length;
+    opts = opts || {};
+    // accept {l, v:[a, b]} as an alias of {label, a, b}
+    groups = groups.map(function (g) { return g.a !== undefined ? g : { label: g.label != null ? g.label : g.l, a: g.v ? g.v[0] : 0, b: g.v && g.v.length > 1 ? g.v[1] : undefined }; });
+    var w = 560, h = opts.h || 150, pad = 8, padB = 18, n = groups.length;
     var all = []; groups.forEach(function (g) { all.push(g.a); if (g.b != null) all.push(g.b); });
     var max = Math.max.apply(null, all) || 1;
     var gw = (w - 2 * pad) / n, paired = groups[0] && groups[0].b != null;
