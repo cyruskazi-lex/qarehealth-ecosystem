@@ -221,6 +221,8 @@
     }
     return out;
   }
+  function liveSet() { var o = receivingOrg(); return o ? X.care.liveOutcomes(o.id) : { records: [], withheld: 0, pending: 0, notMet: 0 }; }
+  function allOutcomes() { return outcomes.concat(liveSet().records); }
   function outcomeEval(o) {
     var el = o.day0 + Math.floor(acc / 86400000);
     if (o.baseline == null) return { s: 'Unmeasured', why: 'No baseline measure' };
@@ -236,7 +238,7 @@
   function outcomeTrace(o) { return fnv([o.id, o.subject, o.measure, o.baseline, o.follow, o.win, o.intervention, o.source].join('|')); }
   function outcomeGroups() {
     var g = {}, order = [];
-    outcomes.forEach(function (o) {
+    allOutcomes().forEach(function (o) {
       if (!g[o.measure]) { g[o.measure] = { measure: o.measure, unit: o.unit, better: o.better, win: o.win, n: 0, deltas: [], traces: [] }; order.push(o.measure); }
       var ev = outcomeEval(o);
       if (ev.s === 'Verified') { g[o.measure].n++; g[o.measure].deltas.push(ev.delta); g[o.measure].traces.push(outcomeTrace(o)); }
@@ -246,7 +248,7 @@
       x.median = !d.length ? 0 : d.length % 2 ? d[h] : (d[h - 1] + d[h]) / 2; return x;
     });
   }
-  function outcomeVerifiedCount() { return outcomes.filter(function (o) { return outcomeEval(o).s === 'Verified'; }).length; }
+  function outcomeVerifiedCount() { return allOutcomes().filter(function (o) { return outcomeEval(o).s === 'Verified'; }).length; }
   function outcomeRoot() { var t = []; outcomeGroups().forEach(function (g) { if (g.n >= MIN_COHORT) t = t.concat(g.traces); }); return merkleRoot(t); }
 
   function beds() { var t = 0, o = 0; cur.units.forEach(function (u) { t += u.total; o += u.occ; }); o += X.admissions().filter(function (a) { return a.orgId === cur.id; }).length; return { total: t, occ: Math.min(t, o) }; }
@@ -1073,26 +1075,30 @@
       render: function () {
         var groups = outcomeGroups(), pass = groups.filter(function (g) { return g.n >= MIN_COHORT; });
         var metrics = collectEESG().filter(function (m) { return m.status === 'Verified' && m.gic && m.from !== 'Impact & GIC'; });
-        var pending = outcomes.filter(function (o) { return outcomeEval(o).pending; }).length;
+        var pending = allOutcomes().filter(function (o) { return outcomeEval(o).pending; }).length;
         var cohortRows = groups.map(function (g) {
           var ok = g.n >= MIN_COHORT;
           return '<div class="row"><span class="m">Health outcomes &middot; ' + esc(g.measure) + ' (' + g.n + ' people, ' + g.win + '-day window)<br><span style="font-family:var(--font-mono);font-size:10px;color:var(--faint)">' + (ok ? 'median change across verified records' : 'held back: fewer than ' + MIN_COHORT + ' people') + '</span></span><span style="display:flex;gap:10px;align-items:center"><span class="v">' + (ok ? (g.better === 'down' ? '-' : '+') + g.median.toFixed(1) + ' ' + esc(g.unit) : 'held back') + '</span>' + UI.statusChip(ok ? 'Verified' : 'Claimed') + '</span></div>';
         }).join('');
         var metricRows = metrics.map(function (m) { return '<div class="row"><span class="m">' + esc(m.front) + ' &middot; ' + esc(m.measure) + '<br><span style="font-family:var(--font-mono);font-size:10px;color:var(--faint)">from ' + esc(m.from) + ', framework metric</span></span><span style="display:flex;gap:10px;align-items:center"><span class="v">' + esc(m.value) + '</span>' + UI.statusChip('Verified') + '</span></div>'; }).join('');
         var parts = [['1. Baseline', 'A measured value before the intervention'], ['2. Intervention link', 'The care events in the HIE that could have caused the change'], ['3. Follow-up', 'A second measurement after the protocol window'], ['4. Independent record', 'A lab, device or second-rater result, not the facility\'s say-so'], ['5. Meaningful change', 'At least the clinical threshold for that measure']];
-        var sample = outcomes.slice(0, 12).map(function (o) {
+        var sample = allOutcomes().filter(function (o) { return o.live; }).concat(outcomes).slice(0, 12).map(function (o) {
           var ev = outcomeEval(o);
-          return '<tr><td class="mono">' + esc(o.id) + '<br><span class="sub2">' + esc(o.subject) + '</span></td><td class="nm">' + esc(o.measure) + '</td><td class="num">' + o.baseline + '</td><td class="num">' + o.follow + ' <span class="sub2">' + esc(o.unit) + '</span></td><td class="sub2">' + esc(o.intervention) + '<br>' + esc(o.source) + '</td><td>' + (ev.label ? '<span class="chip unmeasured">' + esc(ev.label) + '</span>' : UI.statusChip(ev.s)) + '<br><span class="sub2">' + esc(ev.why) + '</span></td><td class="mono">' + outcomeTrace(o) + '</td></tr>';
+          return '<tr><td class="mono">' + esc(o.id) + '<br><span class="sub2">' + esc(o.subject) + (o.live ? ' &middot; from the exchange' : ' &middot; illustrative') + '</span></td><td class="nm">' + esc(o.measure) + '</td><td class="num">' + o.baseline + '</td><td class="num">' + o.follow + ' <span class="sub2">' + esc(o.unit) + '</span></td><td class="sub2">' + esc(o.intervention) + '<br>' + esc(o.source) + '</td><td>' + (ev.label ? '<span class="chip unmeasured">' + esc(ev.label) + '</span>' : UI.statusChip(ev.s)) + '<br><span class="sub2">' + esc(ev.why) + '</span></td><td class="mono">' + outcomeTrace(o) + '</td></tr>';
         }).join('');
+        var lv = liveSet();
+        var liveCard = '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Built from the exchange</div>' +
+          '<div class="figs"><div class="fig"><div class="fv">' + lv.records.length + '</div><div class="fk">records in the cohort, patient consented</div></div><div class="fig"><div class="fv">' + lv.withheld + '</div><div class="fk">documented, patient has not consented</div></div><div class="fig"><div class="fv">' + lv.pending + '</div><div class="fk">follow-up not due</div></div></div>' +
+          '<div class="sub" style="font-size:13px;margin-top:10px">Two keys must both turn. The patient shares anonymously in Nova, and your team publishes here. If a patient withdraws, their record leaves the next build. Records already published stay as anonymous aggregates and cannot be recalled. The other records in the table are an illustrative cohort for the demonstration.</div></div>';
         return head('Impact & GIC', cur.name + '\'s verified results and their publication to the Commons, where they raise capital.') +
           '<div class="impact"><h3>Publishable verified results</h3><div class="rows">' + cohortRows + metricRows + '</div>' +
           '<p class="provenance">only anonymised cohorts of ' + MIN_COHORT + ' or more are published; only Verified results can publish</p>' +
           '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-primary" data-gic-publish>Publish verified record to GIC</button><a class="btn btn-ghost" href="' + X.GIC_URL + '" target="_blank" rel="noopener">Request capital on the Commons</a></div></div>' +
-          '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">What counts as a health outcome</div>' +
+          liveCard + '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">What counts as a health outcome</div>' +
           '<div class="figs"><div class="fig"><div class="fv">' + outcomeVerifiedCount() + '</div><div class="fk">verified outcomes</div></div><div class="fig"><div class="fv">' + pass.length + '</div><div class="fk">cohorts at or above ' + MIN_COHORT + '</div></div><div class="fig"><div class="fv">' + pending + '</div><div class="fk">follow-up not yet due</div></div></div>' +
           '<div class="rows" style="margin-top:10px">' + parts.map(function (r) { return row2(r[0], esc(r[1])); }).join('') + '</div>' +
           '<div class="sub" style="font-size:13px;margin-top:10px">A health outcome is a measured improvement in health, over time, linked to an intervention. A patient staying out of hospital is not one, and no one is rewarded for it. A record that fails any test stays Claimed, Inconsistent or Unmeasured and is never published.</div></div>' +
-          '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Outcome records (12 of ' + outcomes.length + ', anonymised)</div>' +
+          '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Outcome records (12 of ' + allOutcomes().length + ', anonymised)</div>' +
           '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Record</th><th>Measure</th><th class="num">Baseline</th><th class="num">Follow-up</th><th>Intervention and source</th><th>Status</th><th>Trace</th></tr></thead><tbody>' + sample + '</tbody></table></div>' +
           '<div class="sub2" style="margin-top:8px">Published root <span class="mono">' + outcomeRoot() + '</span> commits to every verified record in the published cohorts. A simulated ledger: a hash chain, not a blockchain.</div></div>' +
           '<div class="card shadow" style="margin-top:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:8px">Utilization indicator, not an outcome</div>' +
@@ -1325,7 +1331,8 @@
       var vm = collectEESG().filter(function (x) { return x.status === 'Verified' && x.gic && x.from !== 'Impact & GIC'; });
       if (!pg.length) { UI.toast('Nothing to publish', 'No outcome cohort has reached ' + MIN_COHORT + ' verified people yet. Unverified results are never posted.'); return; }
       var pn = pg.reduce(function (a, g) { return a + g.n; }, 0);
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: pn + ' verified health outcomes in ' + pg.length + ' cohorts, ' + vm.length + ' verified framework metrics', status: 'Verified', cohortFloor: MIN_COHORT, root: outcomeRoot(), outcomes: pg.map(function (g) { return { measure: g.measure, n: g.n, median: Math.round(g.median * 10) / 10, unit: g.unit, windowDays: g.win, better: g.better }; }) }, { app: 'apex', persona: cur.persona.id });
+      var pgm = pg.map(function (g) { return g.measure; }), liveIn = liveSet().records.filter(function (o) { return pgm.indexOf(o.measure) >= 0; }).length;
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: pn + ' verified health outcomes in ' + pg.length + ' cohorts, ' + vm.length + ' verified framework metrics', status: 'Verified', cohortFloor: MIN_COHORT, root: outcomeRoot(), liveRecords: liveIn, illustrativeRecords: pn - liveIn, patientKeys: liveIn, institutionKey: cur.persona.id, outcomes: pg.map(function (g) { return { measure: g.measure, n: g.n, median: Math.round(g.median * 10) / 10, unit: g.unit, windowDays: g.win, better: g.better }; }) }, { app: 'apex', persona: cur.persona.id });
       UI.toast('Published to GIC', cur.name + ' posted ' + pn + ' verified outcomes in ' + pg.length + ' anonymised cohorts. Root ' + outcomeRoot() + '.');
     }
   });

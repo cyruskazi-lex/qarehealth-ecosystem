@@ -252,8 +252,10 @@
     var c = a.getAttribute('data-consent');
     if (c) {
       var on = (c === 'pulse') ? (X.consentGranted('pulse') !== false) : (X.consentGranted(c) === true);
-      X.append(on ? 'CONSENT_REVOKED' : 'CONSENT_GRANTED', { to: c, patientId: pt.id }, { app: 'nova', persona: pt.id });
-      UI.toast('Consent', (on ? 'Revoked' : 'Granted') + ' access: ' + (c === 'pulse' ? 'your clinician' : 'anonymous research'));
+      var rv = null;
+      if (c === 'research') { rv = on ? X.consent.revoke({ patientId: pt.id, flow: 'secondary', recipient: 'research', by: 'patient, in Nova' }, { app: 'nova', persona: pt.id }) : (X.consent.grant({ patientId: pt.id, flow: 'secondary', recipient: 'research', by: 'patient, in Nova' }, { app: 'nova', persona: pt.id }), null); }
+      else X.append(on ? 'CONSENT_REVOKED' : 'CONSENT_GRANTED', { to: c, patientId: pt.id }, { app: 'nova', persona: pt.id });
+      UI.toast('Consent', (on ? 'Revoked' : 'Granted') + ' access: ' + (c === 'pulse' ? 'your clinician' : 'anonymous research') + (rv && rv.alreadyPublished ? '. Anonymous results already published cannot be recalled, but you are left out of every new one.' : ''));
       return;
     }
     if (a.hasAttribute('data-delegate')) {

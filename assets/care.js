@@ -300,6 +300,30 @@
     return { min: min, rows: order.map(function (c) { var r = m[c]; return { condition: c, notifiable: r.notifiable, count: r.count, districts: Object.keys(r.regions).length, suppressed: r.count < min }; }) };
   };
 
+
+  /* ---------- outcome records for the Commons: the patient's key and the institution's key ---------- */
+  // A record built from the event chain joins a published cohort only if it is documented
+  // (all five tests pass) AND the patient's research consent is active now. Withdrawal drops it from the next build.
+  care.OUTCOME_LABEL = { HBA1C: 'HbA1c', 'BP-SYS': 'Systolic BP' };
+  care.liveOutcomes = function (orgId) {
+    var pts = {}, out = { records: [], withheld: 0, pending: 0, notMet: 0 };
+    X.eventsOfType('OBSERVATION_RECORDED').forEach(function (e) { pts[e.payload.patientId] = true; });
+    Object.keys(pts).forEach(function (pid) {
+      var consent = !!(X.consent.state(pid)['secondary|research'] || {}).active;
+      Object.keys(care.MEASURES).forEach(function (code) {
+        var r = care.outcomeRecord(pid, code);
+        if (!r.interventions.some(function (i) { return i.orgId === orgId; })) return;
+        if (r.status === 'pending') { out.pending++; return; }
+        if (r.status !== 'documented') { if (r.status === 'not met') out.notMet++; return; }
+        if (!consent) { out.withheld++; return; }
+        var M = care.MEASURES[code], ev = r.interventions[0];
+        out.records.push({ id: 'LIVE-' + X.hash53('outcome|' + pid + '|' + code).slice(-6).toUpperCase(), subject: 'P-' + X.hash53('subject-salt|' + pid).slice(-5), measure: care.OUTCOME_LABEL[code], unit: M.unit, better: M.better, mcid: M.mcid, win: M.win,
+          baseline: r.baseline.value, follow: r.followUp.value, reported: null, intervention: ev.text, linked: true, independent: true, source: r.followUp.sourceName, day0: M.win + 3, live: true });
+      });
+    });
+    return out;
+  };
+
   /* ---------- payments (conceptual: no money moves) ---------- */
 
   care.TARIFF = { consult: { SMALL: 300, MEDIUM: 500, LARGE: 900 }, lab: { HBA1C: 450, 'BP-PANEL': 600, CREAT: 300 }, copay: { consult: 0.3, lab: 0.2, rx: 0.2 } };
