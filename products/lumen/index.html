@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<link rel="icon" href="data:," />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Qäre Lumen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -95,7 +96,7 @@
     if (mod === 'dataset') {
       return head('Datasets', 'Export-ready, de-identified datasets with their consent and quality lineage.') +
         '<div class="qt-wrap"><table class="qt"><thead><tr><th>Dataset</th><th>Study</th><th class="num">Rows</th><th>De-identified</th><th>Consent</th></tr></thead><tbody>' +
-        [['DS-114a', 'STU-114', n, 'Yes', 'Verified'], ['DS-108a', 'STU-108', 11800, 'Yes', 'Verified']].map(function (r) {
+        [['DS-114a', 'STU-114', n, 'Yes', 'Claimed'], ['DS-108a', 'STU-108', 11800, 'Yes', 'Claimed']].map(function (r) {
           return '<tr><td class="mono">' + esc(r[0]) + '</td><td class="mono">' + esc(r[1]) + '</td><td class="num">' + r[2].toLocaleString() + '</td><td>' + UI.statusChip('Verified').replace('Verified', 'Yes') + '</td><td>' + UI.statusChip(r[4]) + '</td></tr>';
         }).join('') + '</tbody></table></div>' + prov('a dataset carries its own lineage, so a reviewer can trace any row back to a consented record');
     }
@@ -120,8 +121,8 @@
     if (mod === 'impact') {
       return head('Impact and GIC', 'The research contribution to the framework and its verified publication to the Commons.') +
         UI.impactPanel(cur, { measures: [
-          { front: 'Health outcomes', measure: 'Studies supported, year', value: '12', status: 'Verified' },
-          { front: 'Governance', measure: 'Records without valid consent', value: '0', status: 'Verified' },
+          { front: 'Health outcomes', measure: 'Studies supported, year', value: '12', status: 'Claimed' },
+          { front: 'Governance', measure: 'Records without valid consent', value: '0', status: 'Claimed' },
           { front: 'Social', measure: 'Evidence adopted into guidelines', value: '3', status: 'Claimed' }
         ] });
     }
@@ -141,7 +142,7 @@
     var t = e.target.getAttribute('data-tenant'); if (t) { cur = X.org(t); render(); return; }
     var m = e.target.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); render(); return; }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Research evidence generated, year', status: 'Verified' }, { app: 'lumen', persona: cur.personas[0].id });
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Research evidence generated, year', measures: UI.verifiedMeasures(), status: 'Verified' }, { app: 'lumen', persona: cur.personas[0].id });
       UI.toast('Published to GIC', cur.name + ' posted a verified research record to the Commons.');
     }
   });

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<link rel="icon" href="data:," />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Qäre Pulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -291,7 +292,7 @@
     if (mod === 'impact') {
       return head('Impact and GIC', 'The clinic\'s contribution to the framework and its verified publication to the Commons.') +
         UI.impactPanel(cur, { measures: [
-          { front: 'Access and coverage', measure: 'Visits completed on the exchange', value: String(C.visits().filter(function (x) { return x.clinicId === cur.id && x.status === 'closed'; }).length), status: 'Claimed' },
+          { front: 'Access and coverage', measure: 'Visits completed on the exchange', value: String(C.visits().filter(function (x) { return x.clinicId === cur.id && x.status === 'closed'; }).length), status: C.visits().some(function (x) { return x.clinicId === cur.id && x.status === 'closed'; }) ? 'Verified' : 'Unmeasured' },
           { front: 'Care quality and safety', measure: 'Guideline-concordant scripts', value: '96%', status: 'Claimed' },
           { front: 'Health outcomes', measure: 'BP controlled at 6 months', value: '71%', status: 'Claimed' }
         ] });
@@ -389,7 +390,7 @@
       UI.toast('Referral sent', 'The hospital sees it now and can accept or decline.'); return;
     }
     if (a.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Primary care access, Q current', status: 'Claimed' }, { app: 'pulse', persona: cur.personas[0].id });
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Primary care access, Q current', measures: UI.verifiedMeasures(), status: 'Verified' }, { app: 'pulse', persona: cur.personas[0].id });
       UI.toast('Published to GIC', cur.name + ' posted a record to the Commons.');
     }
   });

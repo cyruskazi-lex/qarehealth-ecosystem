@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<link rel="icon" href="data:," />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Qäre Zenith</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -118,7 +119,7 @@
           return '<div class="card shadow"><div class="sub2">' + esc(p[0]) + '</div><div style="font-family:var(--font-mono);font-size:34px;font-weight:600;margin-top:4px">' + esc(p[1]) + '</div></div>';
         }).join('') + '</div>' +
         '<div style="margin-top:16px">' + UI.impactPanel(cur, { measures: [
-          { front: 'Access and coverage', measure: 'Population on the exchange', value: '18.4M', status: 'Verified' },
+          { front: 'Access and coverage', measure: 'Population on the exchange', value: '18.4M', status: 'Claimed' },
           { front: 'Supply integrity and pharmacovigilance', measure: 'Stockout districts', value: '3', status: 'Claimed' },
           { front: 'Health outcomes', measure: 'Institutions publishing to GIC', value: String(pubs), status: pubs ? 'Verified' : 'Unmeasured' }
         ] }) + '</div>' + prov('the national score is the audited sum of what institutions verify, not a self-assessment');
@@ -126,7 +127,7 @@
     if (mod === 'reporting') {
       return head('SDG and donor', 'How verified outcomes map to the SDGs and to the donor and DFI reports that fund them.') +
         '<div class="qt-wrap"><table class="qt"><thead><tr><th>SDG target</th><th>Indicator</th><th>Value</th><th>Verified</th></tr></thead><tbody>' +
-        [['3.8 UHC', 'Service coverage index', '0.61', 'Verified'], ['3.b Essential medicines', 'Availability', '82%', 'Claimed'], ['3.2 Child mortality', 'Under-5 per 1,000', '28', 'Verified'], ['3.1 Maternal health', 'ANC 4+ coverage', '74%', 'Claimed']].map(function (r) {
+        [['3.8 UHC', 'Service coverage index', '0.61', 'Claimed'], ['3.b Essential medicines', 'Availability', '82%', 'Claimed'], ['3.2 Child mortality', 'Under-5 per 1,000', '28', 'Verified'], ['3.1 Maternal health', 'ANC 4+ coverage', '74%', 'Claimed']].map(function (r) {
           return '<tr><td class="nm">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="mono">' + esc(r[2]) + '</td><td>' + UI.statusChip(r[3]) + '</td></tr>';
         }).join('') + '</tbody></table></div>' + prov('donor reports draw from the same verified records, so there is one number, not a reporting copy');
     }
@@ -139,8 +140,8 @@
     if (mod === 'impact') {
       return head('Impact and GIC', 'The national contribution to the framework and its verified publication to the Commons.') +
         UI.impactPanel(cur, { measures: [
-          { front: 'Access and coverage', measure: 'Population on the exchange', value: '18.4M', status: 'Verified' },
-          { front: 'Health outcomes', measure: 'Under-5 mortality per 1,000', value: '28', status: 'Verified' },
+          { front: 'Access and coverage', measure: 'Population on the exchange', value: '18.4M', status: 'Claimed' },
+          { front: 'Health outcomes', measure: 'Under-5 mortality per 1,000', value: '28', status: 'Claimed' },
           { front: 'Governance', measure: 'Facilities audited this year', value: '1,204', status: 'Claimed' }
         ] });
     }
@@ -162,7 +163,7 @@
     var t = e.target.getAttribute('data-tenant'); if (t) { cur = X.org(t); render(); return; }
     var m = e.target.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); render(); return; }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'National health system performance, Q current', status: 'Verified' }, { app: 'zenith', persona: cur.personas[0].id });
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'National health system performance, Q current', measures: UI.verifiedMeasures(), status: 'Verified' }, { app: 'zenith', persona: cur.personas[0].id });
       UI.toast('Published to GIC', cur.name + ' posted a verified national record to the Commons.');
     }
   });

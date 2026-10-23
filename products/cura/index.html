@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<link rel="icon" href="data:," />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Qäre Cura</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -55,7 +56,7 @@
     var done = X.dispenses().filter(function (d) { return !d.byOrgId || d.byOrgId === cur.id; });
     if (mod === 'dispensing') {
       return head('Dispensing queue', 'Prescriptions arrive from Pulse addressed to this pharmacy, because the patient chose it. Dispensing sends a supply signal to the maker, never the patient\'s name.') +
-        kpis([[queue.length, 'waiting'], [done.length, 'dispensed today'], ['100%', 'serial reconciled'], [INVENTORY.filter(function (i) { return i.status === 'low'; }).length, 'lines low']]) +
+        kpis([[queue.length, 'waiting'], [done.length, 'dispensed today'], ['not yet', 'checked against Relay'], [INVENTORY.filter(function (i) { return i.status === 'low'; }).length, 'lines low']]) +
         (queue.length ? '<div class="qt-wrap"><table class="qt"><thead><tr><th>Item</th><th>Patient</th><th>Prescriber</th><th>Rx</th><th></th></tr></thead><tbody>' +
           queue.slice().reverse().map(function (r) { var fresh = !seen[r.rxId]; seen[r.rxId] = true; return '<tr' + (fresh ? ' style="background:var(--iris-tint)"' : '') + '><td class="nm">' + esc(r.drugName) + ' x' + r.qty + '</td><td>' + esc(r.patientName) + '</td><td>' + esc(r.prescriber) + '</td><td class="mono sub2">' + esc(r.rxId) + '</td><td style="text-align:right"><button class="btn btn-primary btn-sm" data-disp="' + esc(r.rxId) + '">Scan and dispense</button></td></tr>'; }).join('') +
           '</tbody></table></div>' : '<div class="card"><div class="sub">Counter is clear' + (elsewhere ? ', and ' + elsewhere + ' prescription' + (elsewhere > 1 ? 's are' : ' is') + ' waiting at other pharmacies the patients chose' : '') + '. Open Pulse in another tab and write a prescription for ' + esc(cur.name) + '; it appears here live.</div></div>') +
@@ -88,7 +89,7 @@
     }
     if (mod === 'serialization') {
       return head('Serialisation', 'The GS1 serials this pharmacy holds and has dispensed, each traceable to the maker and the patient.') +
-        kpis([[done.length, 'dispensed, serialised'], ['100%', 'reconciled to maker'], ['0', 'suspect serials'], ['0', 'duplicates']]) +
+        kpis([[done.length, 'dispensed, serialised'], ['not yet', 'checked against Relay'], ['0', 'suspect serials'], ['0', 'duplicates']]) +
         '<div class="card shadow"><div class="sub" style="font-size:13px">Every pack carries an SGTIN scanned at receipt from Relay and again at dispense. The chain means a recall from Nexus can name the exact packs this pharmacy holds, and the exact patients who received one.</div></div>' +
         prov('serialisation closes the loop from manufacturer to patient, both directions');
     }
@@ -102,7 +103,7 @@
     if (mod === 'impact') {
       return head('Impact and GIC', 'The pharmacy\'s contribution to the framework and its verified publication to the Commons.') +
         UI.impactPanel(cur, { measures: [
-          { front: 'Access and coverage', measure: 'Scripts filled, quarter', value: String(Math.round(3910 * (scale() / 1))), status: 'Claimed' },
+          { front: 'Access and coverage', measure: 'Scripts filled on the exchange', value: String(done.length), status: done.length ? 'Verified' : 'Unmeasured' },
           { front: 'Supply integrity and pharmacovigilance', measure: 'Serialised packs verified', value: '100%', status: 'Claimed' },
           { front: 'Affordability and financial protection', measure: 'Generic substitution rate', value: '63%', status: 'Claimed' }
         ] });
@@ -132,7 +133,7 @@
       return;
     }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Medicines access, Q current', status: 'Claimed' }, { app: 'cura', persona: cur.personas[0].id });
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Medicines access, Q current', measures: UI.verifiedMeasures(), status: 'Verified' }, { app: 'cura', persona: cur.personas[0].id });
       UI.toast('Published to GIC', cur.name + ' posted a record to the Commons.');
     }
   });

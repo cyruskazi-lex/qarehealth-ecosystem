@@ -14,6 +14,8 @@
   --surface-alt: #F5F3FA;   /* faint indigo-tinted panel */
   --chrome: #171326;        /* indigo-black chrome, distinct from Helios brown-black */
   --chrome-soft: #2A2440;
+  --on-chrome: #CFC9DB;      /* body text on the chrome */
+  --on-chrome-faint: #9A94AD;
 
   /* Accent: iris indigo-violet, Qäre's single bold hue */
   --iris: #4B3BA6;

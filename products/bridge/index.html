@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<link rel="icon" href="data:," />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Qäre Bridge</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -138,7 +139,8 @@
     if (mod === 'impact') {
       return head('Impact and GIC', 'What this program contributes to the EESG Health Impact framework, and its verified publication to the Commons.') +
         UI.impactPanel(cur, { measures: [
-          { front: 'Access and coverage', measure: 'Households reached, quarter', value: String(Math.round(2140 * (scale() / 1))), status: 'Verified' },
+          { front: 'Access and coverage', measure: 'Households reached, quarter', value: String(Math.round(2140 * (scale() / 1))), status: 'Claimed' },
+          { front: 'Access and coverage', measure: 'Referrals sent on the exchange', value: String(X.referrals().length), status: X.referrals().length ? 'Verified' : 'Unmeasured' },
           { front: 'Health outcomes', measure: 'Referrals completed', value: '88%', status: 'Claimed' },
           { front: 'Social', measure: 'Immunisation coverage', value: '89%', status: 'Claimed' }
         ] });
@@ -173,7 +175,7 @@
       return;
     }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Last-mile access, Q current', status: 'Verified' }, { app: 'bridge', persona: cur.personas[0].id });
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Last-mile access, Q current', measures: UI.verifiedMeasures(), status: 'Verified' }, { app: 'bridge', persona: cur.personas[0].id });
       UI.toast('Published to GIC', cur.name + ' posted a verified record to the Commons.');
     }
   });

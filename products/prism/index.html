@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<link rel="icon" href="data:," />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Qäre Prism</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -159,6 +160,7 @@
     if (mod === 'impact') {
       return head('Impact and GIC', 'What this lab contributes to the EESG Health Impact framework, and its verified publication to the Commons.') +
         UI.impactPanel(cur, { measures: [
+          { front: 'Access and coverage', measure: 'Results released on the exchange', value: String(X.labResults().filter(function (r) { return r.labOrgId === cur.id; }).length), status: X.labResults().some(function (r) { return r.labOrgId === cur.id; }) ? 'Verified' : 'Unmeasured' },
           { front: 'Care quality and safety', measure: 'QC pass rate', value: '99.3%', status: 'Claimed' },
           { front: 'Access and coverage', measure: 'Median turnaround', value: '4.1h', status: 'Claimed' },
           { front: 'Health outcomes', measure: 'Critical results called < 1h', value: '96%', status: 'Claimed' }
@@ -194,7 +196,7 @@
       return;
     }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Diagnostic access and quality, Q current', status: 'Claimed' }, { app: 'prism', persona: cur.personas[0].id });
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Diagnostic access and quality, Q current', measures: UI.verifiedMeasures(), status: 'Verified' }, { app: 'prism', persona: cur.personas[0].id });
       UI.toast('Published to GIC', cur.name + ' posted a record to the Commons.');
     }
   });

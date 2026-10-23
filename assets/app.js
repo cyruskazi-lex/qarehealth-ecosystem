@@ -50,19 +50,23 @@
   // Impact and GIC panel: shows what this institution has collected against the
   // health framework, and lets it publish a verified, traceable record to GIC
   // with consent, to request capital.
+  var verifiedNow = [];
+  function verifiedMeasures() { return verifiedNow.slice(); }
   function impactPanel(org, data) {
     data = data || {};
+    var verified = (data.measures || []).filter(function (r) { return r.status === 'Verified'; });
+    verifiedNow = verified.map(function (r) { return { front: r.front, measure: r.measure, value: r.value }; });
     var rows = (data.measures || []).map(function (r) {
       return '<div class="row"><span class="m">' + esc(r.front) + ' &middot; ' + esc(r.measure) + '</span>' +
         '<span style="display:flex;gap:10px;align-items:center"><span class="v">' + esc(r.value) + '</span>' + statusChip(r.status) + '</span></div>';
     }).join('');
     return '' +
       '<div class="impact">' +
-        '<h3>Health impact collected' + statusChip('Verified').replace('chip', 'chip') + '</h3>' +
+        '<h3>Health impact collected <span class="chip ' + (verified.length ? 'verified' : 'claimed') + '">' + verified.length + ' of ' + (data.measures || []).length + ' verified</span></h3>' +
         '<div class="rows">' + rows + '</div>' +
-        '<p class="provenance">measured from this institution\'s own records against the EESG Health Impact framework</p>' +
+        '<p class="provenance">' + (verified.length ? 'only the verified measures are published, anonymised and in aggregate; claimed figures are held back until a matching record exists' : 'every figure here is claimed or unmeasured, so nothing can be published; a figure becomes Verified only when a matching record exists') + '</p>' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">' +
-          '<button class="btn btn-primary" data-gic-publish>Publish verified record to GIC</button>' +
+          (verified.length ? '<button class="btn btn-primary" data-gic-publish>Publish ' + verified.length + ' verified measure' + (verified.length > 1 ? 's' : '') + ' to GIC</button>' : '<button class="btn btn-primary" disabled title="Nothing is verified yet">Nothing verified to publish</button>') +
           '<a class="btn btn-ghost" href="' + (X ? X.GIC_URL : '#') + '" target="_blank" rel="noopener">Request capital on the Commons</a>' +
         '</div>' +
       '</div>';
@@ -363,7 +367,7 @@
     esc: esc, money: money, timeOf: timeOf,
     statusChip: statusChip, topbar: topbar, impactPanel: impactPanel,
     tenantBar: tenantBar, osNav: osNav, toast: toast, watchToasts: watchToasts,
-    countUp: countUp, iris: iris, reduce: reduce, trust: Trust, legalFooter: legalFooter, illustrative: illustrative,
+    countUp: countUp, iris: iris, reduce: reduce, trust: Trust, legalFooter: legalFooter, verifiedMeasures: verifiedMeasures, illustrative: illustrative,
     lineChart: lineChart, barsChart: barsChart
   };
 })(typeof window !== 'undefined' ? window : this);
