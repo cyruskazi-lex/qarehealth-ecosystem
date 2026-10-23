@@ -16,12 +16,22 @@
   .log .tm { color: var(--faint); flex: 0 0 52px; }
   .log .ty { color: var(--iris-deep); flex: 0 0 140px; }
   .log .ds { color: var(--mid); min-width: 0; }
+  .sub2 { font-size: 12px; color: var(--mid); line-height: 1.5; }
+  .fld { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .fld input, .fld select { width: 100%; font-family: var(--font-ui); font-size: 13px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--ink); }
+  .fld input:focus-visible, .fld select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 760px) { .grid3, .grid2 { grid-template-columns: 1fr; } }
+  .cand { border: 1px solid var(--hairline); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: var(--surface); } .cand.sel { border-color: var(--iris-line); background: var(--iris-tint); }
+  .sms { background: var(--chrome); color: var(--surface); border-radius: 12px; padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; margin: 10px 0; }
+  pre.json { font-family: var(--font-mono); font-size: 11px; background: var(--surface-alt); border: 1px solid var(--hairline); border-radius: 12px; padding: 12px; max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0; }
   .node { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--hairline); font-size: 13px; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script src="../../assets/exchange.js"></script>
+<script src="../../assets/spine.js"></script>
 <script src="../../assets/app.js"></script>
 <script>
 (function () {
@@ -37,7 +47,8 @@
     RX_WRITTEN: 'prescription', RX_DISPENSED: 'dispense', DEMAND_SIGNAL: 'demand signal',
     LAB_RESULT: 'lab result', REFERRAL: 'referral', ADMISSION: 'admission',
     COLD_CHAIN_ALERT: 'cold-chain alert', CLAIM_ADJUDICATED: 'claim', CONSENT_GRANTED: 'consent granted',
-    CONSENT_REVOKED: 'consent revoked', GIC_PUBLISHED: 'GIC publication'
+    CONSENT_REVOKED: 'consent revoked', GIC_PUBLISHED: 'GIC publication',
+    ACCESS_LOGGED: 'access decision', IDENTITY_LINKED: 'identity linked', IDENTITY_UNLINKED: 'identity unlinked', IDENTITY_REJECTED: 'identity kept apart', PACK_SELECTED: 'jurisdiction pack'
   };
   var ADAPTERS = [
     { name: 'FHIR R4 ingest', feeds: 'Clinical records from EHRs', status: 'Live', last: '2s ago' },
@@ -53,18 +64,190 @@
     { key: 'nodes', label: 'Node health', ic: 'NH', group: 'Exchange' },
     { key: 'log', label: 'Event log', ic: 'EL', group: 'Exchange' },
     { key: 'flows', label: 'Data flows', ic: 'DF', group: 'Exchange' },
-    { key: 'consent', label: 'Consent registry', ic: 'CR', group: 'Trust' },
     { key: 'identity', label: 'Identity resolution', ic: 'ID', group: 'Trust' },
-    { key: 'adapters', label: 'Adapters', ic: 'AD', group: 'Integration' },
+    { key: 'consent', label: 'Consent and policy', ic: 'CR', group: 'Trust' },
+    { key: 'jurisdiction', label: 'Jurisdiction', ic: 'JU', group: 'Trust' },
     { key: 'audit', label: 'Audit and security', ic: 'AU', group: 'Trust' },
+    { key: 'adapters', label: 'Adapters', ic: 'AD', group: 'Integration' },
+    { key: 'fhir', label: 'FHIR view', ic: 'FH', group: 'Integration' },
     { key: 'sla', label: 'SLA', ic: 'SL', group: 'System' },
     { key: 'impact', label: 'Impact and GIC', ic: 'IM', group: 'System' }
   ];
+
+  // Interaction state (survives re-render)
+  var idq = { name: '', father: '', dob: '', sex: '', phone: '', village: '', truth: null };
+  var idres = null, idsel = null, idotp = null, idmsg = '';
+  var tform = { flow: 'secondary', recipient: 'nexus', emergency: false }, tres = null;
+  var tamper = null, fhirSel = null, pendingRender = false;
 
   function head(t, d) { return '<div class="sec-head"><div><div class="t">' + esc(t) + '</div><div class="d">' + esc(d) + '</div></div></div>'; }
   function kpis(arr) { return '<div class="figs" style="margin-bottom:16px">' + arr.map(function (a) { return '<div class="fig"><div class="fv">' + esc(a[0]) + '</div><div class="fk">' + esc(a[1]) + '</div></div>'; }).join('') + '</div>'; }
   function prov(t) { return '<p class="provenance">' + esc(t) + '</p>'; }
   function byApp() { var b = {}; X.events().forEach(function (e) { var a = e.actor && e.actor.app ? e.actor.app : 'system'; b[a] = (b[a] || 0) + 1; }); return b; }
+  function orgName(id) { var o = X.org(id); return o ? o.name : id; }
+  function ctitle(t) { return '<div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">' + esc(t) + '</div>'; }
+  function fld(id, label, val, ph) { return '<label class="fld"><span class="sub2">' + esc(label) + '</span><input id="' + id + '" value="' + esc(val || '') + '" placeholder="' + esc(ph || '') + '" autocomplete="off" /></label>'; }
+  function sel(id, label, val, opts) { return '<label class="fld"><span class="sub2">' + esc(label) + '</span><select id="' + id + '">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === val ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label>'; }
+  function pct(p) { return (p >= 0.995 ? '>99.5' : (p * 100).toFixed(0)) + '%'; }
+  function bandChip(b, confirmed) {
+    if (confirmed) return '<span class="chip verified">confirmed</span>';
+    return b === 'auto' ? '<span class="chip claimed">strong match</span>' : b === 'review' ? '<span class="chip claimed">possible match</span>' : '<span class="chip unmeasured">no match</span>';
+  }
+  function recLine(r) {
+    var d = r.dobPrec === 'full' ? r.dob : r.dob ? r.dob + ' (year only)' : 'date of birth not recorded';
+    return esc(r.name) + ' <span class="sub2">· ' + esc(d) + (r.father ? ' · father ' + esc(r.father) : '') + (r.village ? ' · ' + esc(r.village) : '') + '</span>';
+  }
+
+  /* ---- Needs you: the inbox this console lands on ---- */
+  function inbox() {
+    var rq = X.registry.reviewQueue().length, aq = X.registry.autoQueue().length;
+    var bg = X.eventsOfType('ACCESS_LOGGED').filter(function (e) { return e.payload.breakGlass; }).length;
+    var chain = X.verify();
+    var items = [];
+    if (rq) items.push(['identity', rq + ' possible match' + (rq > 1 ? 'es need' : ' needs') + ' a human decision', 'Two records might be one person. Link or keep apart.']);
+    if (aq) items.push(['identity', aq + ' strong match' + (aq > 1 ? 'es are' : ' is') + ' ready to link', 'Confident enough to link without review. Reversible.']);
+    if (bg) items.push(['audit', bg + ' break-glass access' + (bg > 1 ? 'es' : '') + ' to review', 'A patient restriction was overridden for an emergency.']);
+    if (!chain.ok) items.push(['audit', 'The event log failed its integrity check', chain.broken ? chain.broken.reason : '']);
+    return '<div class="card shadow" style="margin-bottom:16px"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:6px">Needs you</div>' +
+      (items.length ? items.map(function (i) { return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--hairline)"><div><div style="font-size:13px;font-weight:600">' + esc(i[1]) + '</div><div class="sub2">' + esc(i[2]) + '</div></div><button class="btn btn-ghost btn-sm" data-mod="' + i[0] + '">Open</button></div>'; }).join('') : '<div class="sub" style="font-size:13px">Nothing needs you right now.</div>') + '</div>';
+  }
+
+  /* ---- Identity resolution ---- */
+  function candidateCards() {
+    if (!idres) return '<div class="sub" style="font-size:13px">Enter what the clinic knows, or load a case. The registry scores every person it holds and explains each score.</div>';
+    var cs = idres.candidates, cl = {};
+    X.registry.clusters().forEach(function (c) { c.records.forEach(function (id) { cl[id] = c.id; }); });
+    var head2 = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><span class="chip ' + (idres.decision === 'auto' ? 'claimed' : idres.decision === 'none' ? 'unmeasured' : 'claimed') + '">' + esc(idres.decision) + '</span><span class="sub" style="font-size:13px">' + esc(idres.note) + '</span></div>';
+    if (!cs.length) return head2;
+    return head2 + cs.map(function (c) {
+      var on = (idsel || cs[0].rec.id) === c.rec.id;
+      var linked = X.registry.links().some(function (l) { return l.a === idq.visitId && l.b === c.rec.id; });
+      return '<div class="cand' + (on ? ' sel' : '') + '"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="font-size:13px;font-weight:600">' + recLine(c.rec) + '</div><div class="sub2"><span class="mono">' + esc(c.rec.id) + '</span> · ' + esc(orgName(c.rec.org)) + ' · person <span class="mono">' + esc(cl[c.rec.id] || '') + '</span></div></div>' +
+        '<div style="text-align:right"><div class="mono" style="font-size:15px;font-weight:600">' + pct(c.p) + '</div><div class="sub2 mono">' + c.bits.toFixed(1) + ' bits</div></div></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' + bandChip(c.band, linked) + (c.conflict ? '<span class="chip inconsistent">conflict</span>' : '') +
+        '<button class="btn btn-ghost btn-sm" data-cand="' + esc(c.rec.id) + '">Why this score</button>' +
+        (!linked && c.band !== 'none' ? '<button class="btn btn-primary btn-sm" data-otp="' + esc(c.rec.id) + '">Confirm with the patient</button>' : '') + '</div></div>';
+    }).join('');
+  }
+  function evidence() {
+    if (!idres || !idres.candidates.length) return '';
+    var c = idres.candidates.filter(function (x) { return x.rec.id === (idsel || idres.candidates[0].rec.id); })[0] || idres.candidates[0];
+    return '<div class="card shadow" style="margin-top:14px">' + ctitle('Why ' + c.rec.id + ' scores ' + c.bits.toFixed(1) + ' bits') +
+      '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Field</th><th>Evidence</th><th class="num">Bits</th></tr></thead><tbody>' +
+      c.parts.map(function (p) { return '<tr><td class="nm">' + esc(p.label) + '</td><td class="sub2">' + esc(p.note) + '</td><td class="num mono">' + (p.skipped ? '·' : (p.bits >= 0 ? '+' : '') + p.bits.toFixed(1)) + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+      '<div class="sub2" style="margin-top:8px">Agreement on a common token such as Muhammad is worth little. Agreement on a rare one is worth a lot. Bits add up; confidence also accounts for how many people the registry holds.</div></div>';
+  }
+  function otpBox() {
+    if (!idotp) return '';
+    var r = X.registry.record(idotp.rec), ch = X.registry.challenge(idotp.rec);
+    var body;
+    if (ch && ch.channel === 'sms') {
+      body = '<div class="sms">SIMULATED SMS to ' + esc(ch.to) + ': Qäre code ' + esc(ch.simulatedCode) + '. Do not share it.</div>' +
+        '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"><div style="width:180px">' + fld('otp-in', 'Code the patient reads out', '', '6 digits') + '</div><button class="btn btn-primary" data-otpconfirm>Confirm identity</button><button class="btn btn-ghost" data-idreject>Patient does not recognise this person</button></div>' +
+        '<div class="sub2" style="margin-top:8px">In production the code goes to the phone on file, which the patient holds. A different person\'s phone cannot confirm a wrong match.</div>';
+    } else {
+      body = '<div class="sub" style="font-size:13px;margin-bottom:10px">' + esc(ch ? ch.note : 'No contact on file.') + '</div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" data-chw>Community health worker confirms in person</button><button class="btn btn-ghost" data-idreject>Not this person</button></div>';
+    }
+    return '<div class="card shadow" style="margin-top:14px">' + ctitle('Patient confirms who they are: ' + (r ? r.name : '')) + body + '</div>';
+  }
+  function pairCard(x, actions) {
+    var a = X.registry.record(x.a), b = X.registry.record(x.b);
+    return '<div class="cand"><div style="display:flex;justify-content:space-between;gap:10px"><div><div style="font-size:13px;font-weight:600">' + recLine(a) + '</div><div class="sub2"><span class="mono">' + esc(a.id) + '</span> · ' + esc(orgName(a.org)) + '</div><div style="font-size:13px;font-weight:600;margin-top:8px">' + recLine(b) + '</div><div class="sub2"><span class="mono">' + esc(b.id) + '</span> · ' + esc(orgName(b.org)) + '</div></div>' +
+      '<div style="text-align:right"><div class="mono" style="font-size:15px;font-weight:600">' + pct(x.p) + '</div><div class="sub2 mono">' + x.bits.toFixed(1) + ' bits</div>' + (x.conflict ? '<span class="chip inconsistent">conflict</span>' : '') + '</div></div>' +
+      '<div class="sub2" style="margin-top:6px">' + x.parts.filter(function (p) { return !p.skipped; }).map(function (p) { return esc(p.label) + ' ' + (p.bits >= 0 ? '+' : '') + p.bits.toFixed(1); }).join(' · ') + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px">' + actions + '</div></div>';
+  }
+  function identityBody() {
+    var m = X.registry.metrics(), rq = X.registry.reviewQueue(), aq = X.registry.autoQueue(), links = X.registry.links();
+    var presets = X.registry.scenarios.map(function (s) { return '<button class="btn btn-ghost btn-sm" data-preset="' + s.key + '">' + esc(s.label) + '</button>'; }).join('');
+    return head('Identity resolution', 'One person across every facility, without a national ID. Common names are scored by how rare the matching details are, and the patient confirms the link.') +
+      UI.illustrative('The matching is real and runs here. The people are demonstration records, and the one-time code is a simulated SMS.') +
+      kpis([[m.sourceRecords, 'source records'], [m.persons, 'people after linking'], [m.pendingReview, 'need a human'], [m.autoPending, 'ready to auto-link']]) +
+      '<div class="split"><div><div class="card shadow">' + ctitle('Resolve a patient at the point of care') +
+        '<div class="grid3">' + fld('id-name', 'Name', idq.name, 'Mohammed Rahman') + fld('id-father', "Father's name", idq.father, 'optional') + fld('id-dob', 'Date of birth', idq.dob, 'YYYY or YYYY-MM-DD') + '</div>' +
+        '<div class="grid3" style="margin-top:10px">' + sel('id-sex', 'Sex', idq.sex, [['', 'not given'], ['M', 'Male'], ['F', 'Female']]) + fld('id-phone', 'Phone', idq.phone, 'optional') + fld('id-village', 'Place', idq.village, 'optional') + '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-primary" data-idrun>Find matches</button>' + presets + '</div></div>' +
+        '<div style="margin-top:14px">' + candidateCards() + '</div>' + (idmsg ? '<div class="card shadow" style="margin-top:6px"><div class="sub" style="font-size:13px">' + idmsg + '</div></div>' : '') + otpBox() + evidence() + '</div>' +
+      '<div><div class="card shadow">' + ctitle('Safety against demo ground truth') +
+        '<div class="figs"><div class="fig"><div class="fv">' + m.falseMerges + '</div><div class="fk">false merges</div></div><div class="fig"><div class="fv">' + m.duplicatePeople + '</div><div class="fk">duplicates left</div></div></div>' +
+        '<div class="sub2">Thresholds: link without review at ' + (X.registry.thresholds.auto * 100) + '% with a ' + X.registry.thresholds.marginBits + '-bit lead over the next person; review from ' + (X.registry.thresholds.review * 100) + '%. Records are linked, never merged, so any link can be undone.</div></div>' +
+        '<div class="card shadow" style="margin-top:14px">' + ctitle('What leaves an organisation') + hashedBox() + '</div></div></div>' +
+      '<div class="card shadow" style="margin-top:16px">' + ctitle('Possible matches for a human (' + rq.length + ')') + (rq.length ? rq.map(function (x) { return pairCard(x, '<button class="btn btn-primary btn-sm" data-rq="' + x.a + '|' + x.b + '|link">Same person</button><button class="btn btn-ghost btn-sm" data-rq="' + x.a + '|' + x.b + '|reject">Different people</button>'); }).join('') : '<div class="sub" style="font-size:13px">No undecided pairs.</div>') + '</div>' +
+      '<div class="card shadow" style="margin-top:16px">' + ctitle('Strong matches ready to link (' + aq.length + ')') + (aq.length ? '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Record</th><th>Record</th><th class="num">Confidence</th></tr></thead><tbody>' + aq.map(function (x) { var a = X.registry.record(x.a), b = X.registry.record(x.b); return '<tr><td>' + recLine(a) + '</td><td>' + recLine(b) + '</td><td class="num mono">' + pct(x.p) + '</td></tr>'; }).join('') + '</tbody></table></div><div style="margin-top:10px"><button class="btn btn-primary" data-applyauto>Link all ' + aq.length + '</button></div><div class="sub2" style="margin-top:8px">Auto-links need a high score, no conflicting field and a clear lead. They are reversible and the patient can dispute them in Nova.</div>' : '<div class="sub" style="font-size:13px">None waiting.</div>') + '</div>' +
+      '<div class="card shadow" style="margin-top:16px">' + ctitle('Links (' + links.length + ')') + (links.length ? '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Records</th><th>How</th><th class="num">Confidence</th><th></th></tr></thead><tbody>' + links.slice().reverse().slice(0, 14).map(function (l) { return '<tr><td class="mono">' + esc(l.a) + ' ~ ' + esc(l.b) + '</td><td>' + esc(l.method) + '</td><td class="num mono">' + (l.pr ? pct(l.pr) : '·') + '</td><td><button class="btn btn-ghost btn-sm" data-unlink="' + esc(l.a) + '|' + esc(l.b) + '">Unlink</button></td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="sub" style="font-size:13px">No links.</div>') + '</div>' +
+      prov('probabilistic matching with frequency weighting; linked, never merged; every link is an event on the log and can be reversed');
+  }
+  function hashedBox() {
+    var r = X.registry.record('R-001'), keys = X.registry.hashedKeys(r, 'org-salt');
+    return '<div class="sub2" style="margin-bottom:8px">To match across organisations without sharing names, each side sends salted hashes of a phonetic skeleton. For <span class="mono">' + esc(r.name) + '</span>:</div>' + keys.map(function (k) { return '<div class="mono" style="font-size:11px;color:var(--mid)">' + esc(k) + '</div>'; }).join('') + '<div class="sub2" style="margin-top:8px">Matching hashes suggest a candidate. They never replace the patient\'s confirmation.</div>';
+  }
+
+  /* ---- Consent and policy ---- */
+  var RECIPIENTS = [['pulse', 'Pulse, the treating clinician'], ['cura', 'Cura, pharmacy'], ['apex', 'Apex, hospital'], ['nexus', 'Nexus, pharma operations'], ['research', 'Research cohort (Nova toggle)'], ['gic', 'Global Impact Commons'], ['shield', 'Shield, payer'], ['zenith', 'Zenith, ministry'], ['family:Rina', 'Family member (delegate)']];
+  function consentBody() {
+    var pk = X.pack();
+    var flows = X.FLOWS.map(function (f) { var r = pk.flows[f.key]; return '<tr><td class="nm">' + esc(f.label) + '</td><td>' + esc(r.consent) + '</td><td>' + esc(r.basis) + '</td><td class="sub2">' + esc(r.revocable) + '</td></tr>'; }).join('');
+    var led = X.events().filter(function (e) { return e.type === 'CONSENT_GRANTED' || e.type === 'CONSENT_REVOKED'; });
+    var pubs = X.eventsOfType('GIC_PUBLISHED').length;
+    return head('Consent and policy', 'The patient holds the keys. Every access is checked against the active jurisdiction pack and the patient\'s own grants, and every decision is logged.') +
+      UI.illustrative('The policy engine is real. The rules in each pack are Qäre default policy and a summary, not legal advice.') +
+      '<div class="card shadow">' + ctitle('Data flows under the ' + pk.country + ' pack') +
+      '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Flow</th><th>Consent</th><th>Basis</th><th>Patient can withdraw</th></tr></thead><tbody>' + flows + '</tbody></table></div>' +
+      '<div class="sub2" style="margin-top:8px">Public-health reporting has no opt-out. Everything else the patient can restrict or withdraw, from now on.</div></div>' +
+      '<div class="card shadow" style="margin-top:16px">' + ctitle('Try an access request') +
+      '<div class="grid3">' + sel('t-flow', 'Flow', tform.flow, X.FLOWS.map(function (f) { return [f.key, f.label]; }).concat([['delegated', 'Delegated family access']])) + sel('t-rec', 'Recipient', tform.recipient, RECIPIENTS) +
+      '<label class="fld"><span class="sub2">Emergency</span><select id="t-emerg"><option value="0"' + (tform.emergency ? '' : ' selected') + '>No</option><option value="1"' + (tform.emergency ? ' selected' : '') + '>Yes, break-glass</option></select></label></div>' +
+      '<div style="margin-top:12px"><button class="btn btn-primary" data-test>Check and log</button></div>' +
+      (tres ? '<div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="chip ' + (tres.allow ? 'verified' : 'inconsistent') + '">' + (tres.allow ? 'allowed' : 'denied') + '</span><span class="sub" style="font-size:13px">' + esc(tres.reason) + ' <span class="sub2">Basis: ' + esc(tres.basis) + '. Logged to the audit trail.</span></span></div>' : '<div class="sub2" style="margin-top:10px">Patient: ' + esc(X.PATIENT.name) + '. Change a grant in Nova and check again.</div>') + '</div>' +
+      '<div class="card shadow" style="margin-top:16px">' + ctitle('Consent ledger') +
+      (led.length ? '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Flow</th><th>Recipient</th><th>Event</th><th>Time</th></tr></thead><tbody>' + led.slice().reverse().slice(0, 12).map(function (e) { var p = e.payload, f = p.flow || (p.to === 'research' ? 'secondary' : 'treatment'); return '<tr><td class="nm">' + esc(f) + '</td><td>' + esc(p.recipient || p.to) + '</td><td>' + (e.type === 'CONSENT_GRANTED' ? '<span class="chip verified">granted</span>' : '<span class="chip inconsistent">withdrawn</span>') + '</td><td class="mono">' + UI.timeOf(e.ts) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="sub" style="font-size:13px">No consent events yet. Toggle a grant in Nova and it registers here.</div>') +
+      '<div class="sub2" style="margin-top:8px">Withdrawal applies from now on. ' + pubs + ' anonymised aggregate' + (pubs === 1 ? ' has' : 's have') + ' been published to the Commons in this session; published aggregates cannot be recalled.</div></div>' +
+      prov('append-only; a consent steward can never also hold a data-consuming role; the separation is structural');
+  }
+
+  /* ---- Jurisdiction ---- */
+  function jurisdictionBody() {
+    var pk = X.pack();
+    return head('Jurisdiction', 'One platform, different rules. The pack sets lawful bases, what cannot be opted out of, and where data may travel.') +
+      UI.illustrative('Packs are draft policy summaries, not legal advice. Local counsel validates each one before any real use.') +
+      '<div class="subtabs">' + Object.keys(X.PACKS).map(function (k) { return '<button class="subtab' + (k === pk.id ? ' on' : '') + '" data-pack="' + k + '">' + esc(X.PACKS[k].country) + '</button>'; }).join('') + '</div>' +
+      '<div class="split"><div class="card shadow">' + ctitle(pk.country + (pk.lead ? ' (lead pack)' : '')) +
+      '<div class="rows">' + [['Legal frame', pk.law], ['Cross-border', pk.crossBorder], ['Smallest published cohort', pk.minCohort + ' people'], ['Working language', pk.language], ['Status', pk.status]].map(function (r) { return '<div class="row" style="padding:8px 10px"><span class="m">' + esc(r[0]) + '</span><span class="v" style="max-width:340px;text-align:right">' + esc(r[1]) + '</span></div>'; }).join('') + '</div></div>' +
+      '<div class="card shadow">' + ctitle('Notifiable conditions (example list)') +
+      '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Condition</th><th>Report</th></tr></thead><tbody>' + pk.notifiable.map(function (n) { return '<tr><td class="nm">' + esc(n[0]) + '</td><td class="mono">' + esc(n[1]) + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+      '<div class="sub2" style="margin-top:8px">Notifiable cases go to public health as identified reports. Surveillance is aggregate. The ministry sets the real list and cadence in Zenith.</div></div></div>' +
+      prov('switching the pack changes every policy decision in every app, immediately');
+  }
+
+  /* ---- Audit and security ---- */
+  function auditBody() {
+    var chain = X.verify(), logs = X.eventsOfType('ACCESS_LOGGED');
+    var denied = logs.filter(function (e) { return !e.payload.allow; }).length, bg = logs.filter(function (e) { return e.payload.breakGlass; }).length;
+    return head('Audit and security', 'The tamper-evidence and access record that make the exchange trustworthy. Everything here is computed from the log.') +
+      kpis([[chain.ok ? 'intact' : 'broken', 'event log integrity'], [chain.checked, 'events checked'], [logs.length, 'access decisions'], [denied + ' / ' + bg, 'denied / break-glass']]) +
+      '<div class="split"><div class="card shadow">' + ctitle('Hash-linked log') +
+      '<div class="sub" style="font-size:13px">Each event carries the hash of the one before it. Changing a payload or removing an event is detectable. The demo uses a simple non-cryptographic hash; production uses SHA-256.</div>' +
+      '<div style="display:flex;gap:10px;margin-top:12px;align-items:center;flex-wrap:wrap"><span class="chip ' + (chain.ok ? 'verified' : 'inconsistent') + '">' + (chain.ok ? 'chain intact' : 'chain broken') + '</span><button class="btn btn-ghost btn-sm" data-tamper>Run a tamper test</button></div>' +
+      (tamper ? '<div style="margin-top:10px" class="sub"><span style="font-size:13px">' + esc(tamper) + '</span></div>' : '') + '</div>' +
+      '<div class="card shadow">' + ctitle('Controls by design') + [['Role-based access', 'Enforced at the exchange; every decision is an event.'], ['Consent by flow', 'Checked per request against the active pack.'], ['Encryption', 'Specified for production: keys held by each institution, not the operator.']].map(function (c) { return '<div style="margin-bottom:8px"><div style="font-size:13px;font-weight:600">' + esc(c[0]) + '</div><div class="sub2">' + esc(c[1]) + '</div></div>'; }).join('') + '</div></div>' +
+      '<div class="card shadow" style="margin-top:16px">' + ctitle('Access decisions') +
+      (logs.length ? '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Time</th><th>From</th><th>Flow</th><th>Recipient</th><th>Decision</th><th>Reason</th></tr></thead><tbody>' + logs.slice().reverse().slice(0, 15).map(function (e) { var p = e.payload; return '<tr><td class="mono">' + UI.timeOf(e.ts) + '</td><td>' + esc(e.actor && e.actor.app ? e.actor.app : 'system') + '</td><td>' + esc(p.flow) + '</td><td>' + esc(p.recipient || '') + '</td><td>' + (p.breakGlass ? '<span class="chip claimed">break-glass</span>' : p.allow ? '<span class="chip iris">allowed</span>' : '<span class="chip inconsistent">denied</span>') + '</td><td class="sub2">' + esc(p.reason) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="sub" style="font-size:13px">No access decisions yet. Try one under Consent and policy.</div>') + '</div>' +
+      prov('integrity and access figures are computed from the log; no audit report or certification is claimed here');
+  }
+
+  /* ---- FHIR view ---- */
+  function fhirBody() {
+    var evs = X.events().filter(function (e) { return X.fhir.supported.indexOf(e.type) >= 0; }).reverse();
+    var counts = {};
+    evs.forEach(function (e) { var r = X.fhir.resource(e); if (r) counts[r.resourceType] = (counts[r.resourceType] || 0) + 1; });
+    var chosen = evs.filter(function (e) { return e.id === fhirSel; })[0] || evs[0];
+    return head('FHIR view', 'The same events, as FHIR R4 resources. Any FHIR-speaking system can read them; standards are the way in, not a replacement for your systems.') +
+      kpis([[evs.length, 'events with a FHIR form'], [Object.keys(counts).length, 'resource types'], ['R4', 'FHIR release'], ['LOINC', 'lab codes']]) +
+      (evs.length ? '<div class="split"><div class="card shadow">' + ctitle('Events') + '<div class="qt-wrap" style="border:0"><table class="qt"><thead><tr><th>Time</th><th>Event</th><th>Resource</th></tr></thead><tbody>' + evs.slice(0, 14).map(function (e) { var r = X.fhir.resource(e); return '<tr class="click" data-fhir="' + esc(e.id) + '"' + (chosen && chosen.id === e.id ? ' style="background:var(--iris-tint)"' : '') + '><td class="mono">' + UI.timeOf(e.ts) + '</td><td>' + esc(e.type) + '</td><td class="mono">' + esc(r ? r.resourceType : '') + '</td></tr>'; }).join('') + '</tbody></table></div></div>' +
+        '<div class="card shadow">' + ctitle(chosen ? X.fhir.resource(chosen).resourceType : 'Resource') + '<pre class="json">' + esc(chosen ? JSON.stringify(X.fhir.resource(chosen), null, 2) : '') + '</pre>' +
+        '<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" data-download>Download Bundle (JSON)</button></div></div></div>' : '<div class="card shadow"><div class="sub" style="font-size:13px">No FHIR-mappable events yet. Write a prescription in Pulse, post a result in Prism, dispense in Cura or change a grant in Nova, and it appears here as a resource.</div></div>') +
+      prov('lab results carry LOINC codes; medicines use the Qäre formulary until a national code system is chosen; consent maps to the FHIR Consent resource');
+  }
 
   function moduleBody() {
     var evs = X.events();
@@ -73,11 +256,12 @@
     var consentEvents = X.eventsOfType('CONSENT_GRANTED').length + X.eventsOfType('CONSENT_REVOKED').length;
     if (mod === 'overview') {
       return head('Operations', 'Who runs the data highway. Node health, live throughput, consent and integration, on one console.') +
-        kpis([[active + '/11', 'nodes with traffic'], [evs.length, 'events logged'], [consentEvents, 'consent events'], [ADAPTERS.filter(function (a) { return a.status === 'Live'; }).length + '/' + ADAPTERS.length, 'adapters live']]) +
+        inbox() +
+        kpis([[active + '/11', 'nodes with traffic'], [evs.length, 'events logged'], [consentEvents, 'consent events'], [X.verify().ok ? 'intact' : 'broken', 'log integrity']]) +
         '<div class="split"><div><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">System status</div>' +
-        statusRow('ok', 'Exchange core', 'all regions nominal') + statusRow('ok', 'FHIR and HL7 ingest', 'live') + statusRow('warn', 'IoT cold-chain adapter', 'degraded, 2m since last message') + statusRow('ok', 'Consent service', 'live, append-only') + '</div></div>' +
-        '<div><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">IRIS briefing</div><div class="sub" style="font-size:13px">The exchange is healthy. One adapter, the cold-chain IoT feed, is degraded and should be checked before the next OncoNex shipment. ' + evs.length + ' events are on the log across ' + active + ' active nodes. Consent is append-only and reconciling.</div></div></div></div>' +
-        prov('this console reads the exchange and never mutates clinical state');
+        statusRow('ok', 'Exchange core', 'event log live') + statusRow('ok', 'Policy engine', 'pack: ' + X.pack().country) + statusRow('warn', 'IoT cold-chain adapter', 'degraded (simulated)') + statusRow('ok', 'Consent service', 'live, append-only') + '</div></div>' +
+        '<div><div class="card shadow"><div style="font-family:var(--font-brand);font-weight:700;margin-bottom:10px">IRIS briefing</div><div class="sub" style="font-size:13px">' + evs.length + ' events are on the log across ' + active + ' active nodes. The log is ' + (X.verify().ok ? 'intact' : 'broken') + '. The cold-chain IoT feed is degraded in this simulation and should be checked before the next OncoNex shipment. I advise; the operator decides.</div></div></div></div>' +
+        prov('event counts and integrity are computed from the log; adapter status rows are simulated');
     }
     if (mod === 'nodes') {
       return head('Node health', 'Each product is a node. Traffic confirms it is reading and writing the exchange.') +
@@ -87,9 +271,9 @@
     if (mod === 'log') {
       return head('Event log', 'The append-only exchange log, newest first. Every clinical and operational event flows through here.') +
         '<div class="card shadow"><div class="log">' + (evs.length ? evs.slice().reverse().map(function (e) {
-          return '<div class="l' + (e.id === lastId ? ' fresh' : '') + '"><span class="tm">' + UI.timeOf(e.ts) + '</span><span class="ty">' + esc(TYPE_LABEL[e.type] || e.type) + '</span><span class="ds">' + esc(e.actor && e.actor.app ? e.actor.app : 'system') + '</span></div>';
+          return '<div class="l' + (e.id === lastId ? ' fresh' : '') + '"><span class="tm">' + UI.timeOf(e.ts) + '</span><span class="ty">' + esc(TYPE_LABEL[e.type] || e.type) + '</span><span class="ds">' + esc(e.actor && e.actor.app ? e.actor.app : 'system') + (e.hash ? ' · ' + esc(e.hash.slice(0, 8)) : '') + '</span></div>';
         }).join('') : '<div class="sub">No events yet. Act in any app and the log fills here live.</div>') + '</div></div>' +
-        prov('append-only and hash-chained; a change to history is detectable');
+        prov('append-only and hash-linked; a changed or removed event fails the integrity check under Audit and security');
     }
     if (mod === 'flows') {
       var types = Object.keys(TYPE_LABEL).map(function (t) { return { t: t, n: X.eventsOfType(t).length }; }).filter(function (x) { return x.n; }).sort(function (a, c) { return c.n - a.n; });
@@ -98,47 +282,31 @@
         (types.length ? '<div class="card shadow">' + types.map(function (x) { return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>' + esc(TYPE_LABEL[x.t]) + '</span><span class="mono">' + x.n + '</span></div><div class="meter"><div class="fill" style="width:' + (x.n / max * 100) + '%"></div></div></div>'; }).join('') + '</div>' : '<div class="card"><div class="sub">No flow yet. Drive an action in another app.</div></div>') +
         prov('each bar is a real count from the event log, not a projection');
     }
-    if (mod === 'consent') {
-      var state = X.consentGranted();
-      var grants = X.events().filter(function (e) { return e.type === 'CONSENT_GRANTED' || e.type === 'CONSENT_REVOKED'; });
-      return head('Consent registry', 'Live, revocable consent grants. The double-key model keeps care and secondary-use separate.') +
-        kpis([[Object.keys(state).filter(function (k) { return state[k]; }).length, 'active grants'], [X.eventsOfType('CONSENT_REVOKED').length, 'revocations'], ['append-only', 'ledger'], ['0', 'collapsed keys']]) +
-        (grants.length ? '<div class="qt-wrap"><table class="qt"><thead><tr><th>Grant</th><th>Scope</th><th>Event</th><th>Time</th></tr></thead><tbody>' + grants.slice().reverse().map(function (e) {
-          return '<tr><td class="nm">' + esc(e.payload.to === 'research' ? 'Secondary use (research)' : 'Care coordination') + '</td><td>' + esc(e.payload.to) + '</td><td>' + (e.type === 'CONSENT_GRANTED' ? '<span class="chip verified">granted</span>' : '<span class="chip inconsistent">revoked</span>') + '</td><td class="mono">' + UI.timeOf(e.ts) + '</td></tr>';
-        }).join('') + '</tbody></table></div>' : '<div class="card"><div class="sub">No consent events yet. Toggle a grant in Nova and it registers here.</div></div>') +
-        prov('a consent steward can never also hold a data-consuming role; the separation is structural');
-    }
-    if (mod === 'identity') {
-      return head('Identity resolution', 'One person, one record, across every facility. The resolver links identifiers without a national ID requirement.') +
-        kpis([['18.4M', 'resolved identities'], ['99.2%', 'match confidence'], ['1,204', 'manual reviews, month'], ['0', 'merge errors']]) +
-        '<div class="qt-wrap"><table class="qt"><thead><tr><th>Record</th><th>Linked identifiers</th><th>Confidence</th><th>Status</th></tr></thead><tbody>' +
-        [['QH-PT-100482', 'MRN x3, phone, NID', '99.8%', 'Resolved'], ['QH-PT-100771', 'MRN x2, phone', '97.1%', 'Resolved'], ['QH-PT-100233', 'MRN x2', '88.0%', 'Review']].map(function (r) {
-          return '<tr><td class="mono">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="mono">' + esc(r[2]) + '</td><td>' + (r[3] === 'Review' ? '<span class="chip claimed">review</span>' : '<span class="chip verified">resolved</span>') + '</td></tr>';
-        }).join('') + '</tbody></table></div>' + prov('deterministic plus probabilistic matching; a low-confidence link is reviewed, never auto-merged');
-    }
+    if (mod === 'identity') return identityBody();
+    if (mod === 'consent') return consentBody();
+    if (mod === 'jurisdiction') return jurisdictionBody();
+    if (mod === 'audit') return auditBody();
+    if (mod === 'fhir') return fhirBody();
     if (mod === 'adapters') {
       return head('Adapters', 'Source systems feeding the exchange. One is degraded and one is scoped but not yet connected.') +
+        UI.illustrative('Simulated adapters. None is a live connection, and the timings are not measured.') +
         '<div class="qt-wrap"><table class="qt"><thead><tr><th>Adapter</th><th>Feeds</th><th>Status</th><th>Last message</th></tr></thead><tbody>' +
-        ADAPTERS.map(function (a) { var c = a.status === 'Live' ? 'verified' : a.status === 'Degraded' ? 'inconsistent' : 'claimed'; return '<tr><td class="nm">' + esc(a.name) + '</td><td>' + esc(a.feeds) + '</td><td><span class="chip ' + c + '">' + esc(a.status) + '</span></td><td class="mono sub2">' + esc(a.last) + '</td></tr>'; }).join('') +
+        ADAPTERS.map(function (a) { var c = a.status === 'Live' ? 'claimed' : a.status === 'Degraded' ? 'inconsistent' : 'claimed'; return '<tr><td class="nm">' + esc(a.name) + '</td><td>' + esc(a.feeds) + '</td><td><span class="chip ' + c + '">' + esc(a.status) + '</span></td><td class="mono sub2">' + esc(a.last) + '</td></tr>'; }).join('') +
         '</tbody></table></div>' + prov('systems of record stay in place; the adapter reads from them into the exchange, it does not replace them');
-    }
-    if (mod === 'audit') {
-      return head('Audit and security', 'The tamper-evidence and access record that make the exchange trustworthy.') +
-        '<div class="cards3">' + [['Hash-chained log', 'Every event is chained to the prior one; a silent edit breaks the chain.'], ['Role-based access', 'Enforced at the exchange, logged per read and write.'], ['Encryption', 'In transit and at rest; keys held by each institution, not the operator.']].map(function (c) { return '<div class="card shadow"><div style="font-weight:700;font-size:14px;margin-bottom:6px">' + esc(c[0]) + '</div><div class="sub" style="font-size:13px">' + esc(c[1]) + '</div></div>'; }).join('') + '</div>' +
-        '<div class="card shadow" style="margin-top:14px"><div class="sub" style="font-size:13px">Last independent audit: clean. Next: Q1. Access anomalies this week: 0.</div></div>' +
-        prov('the operator can be replaced with no data lost, because each institution holds its own records');
     }
     if (mod === 'sla') {
       return head('SLA', 'Service levels the exchange commits to, and how it is tracking this month.') +
-        '<div class="card shadow">' + [['Uptime', 99.98, 99.9], ['Ingest latency p95', 92, 95], ['Consent check latency', 99, 99]].map(function (r) { return '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span>' + esc(r[0]) + '</span><span class="mono">' + r[1] + ' / target ' + r[2] + '</span></div><div class="meter"><div class="fill ok" style="width:' + Math.min(100, r[1]) + '%"></div></div></div>'; }).join('') + '</div>' +
+        UI.illustrative('Illustrative targets and figures. Nothing here is measured in the demo.') +
+        '<div class="card shadow">' + [['Uptime', 99.98, 99.9], ['Ingest latency p95', 92, 95], ['Consent check latency', 99, 99]].map(function (r) { return '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span>' + esc(r[0]) + '</span><span class="mono">' + r[1] + ' / target ' + r[2] + '</span></div><div class="meter"><div class="fill warn" style="width:' + Math.min(100, r[1]) + '%"></div></div></div>'; }).join('') + '</div>' +
         prov('the exchange is infrastructure; its SLA is what every product depends on');
     }
     if (mod === 'impact') {
+      var mt = X.registry.metrics();
       return head('Impact and GIC', 'The exchange operator\'s own contribution to the framework, and its verified publication.') +
         UI.impactPanel(cur, { measures: [
-          { front: 'Governance', measure: 'Exchange uptime', value: '99.98%', status: 'Verified' },
-          { front: 'Access and coverage', measure: 'Facilities connected', value: '92%', status: 'Claimed' },
-          { front: 'Health outcomes', measure: 'Records unified', value: '18.4M', status: 'Verified' }
+          { front: 'Governance', measure: 'Event log integrity', value: X.verify().ok ? 'intact' : 'broken', status: X.verify().ok ? 'Verified' : 'Inconsistent' },
+          { front: 'Access and coverage', measure: 'Nodes with traffic', value: active + ' of 11', status: 'Claimed' },
+          { front: 'Health outcomes', measure: 'Records unified', value: mt.sourceRecords + ' records, ' + mt.persons + ' people', status: 'Claimed' }
         ] });
     }
     return '';
@@ -149,22 +317,78 @@
   function render() {
     var who = cur.personas[0];
     document.getElementById('root').innerHTML =
-      UI.topbar({ appName: 'Core', personaName: who.name, personaRole: who.role + ' · ' + cur.name }) +
+      UI.topbar({ appName: 'Core', personaName: who.name, personaRole: who.role + ' · ' + cur.name, trustLabel: 'Pack: ' + X.pack().country }) +
       '<div class="os">' + UI.osNav(MODS, mod) +
         '<main class="os-main">' + UI.tenantBar(orgs, cur.id) + '<div style="margin-top:16px">' + moduleBody() + '</div></main>' +
       '</div>';
   }
 
+  function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  function readQuery() {
+    idq.name = val('id-name'); idq.father = val('id-father'); idq.dob = val('id-dob'); idq.sex = val('id-sex'); idq.phone = val('id-phone'); idq.village = val('id-village');
+  }
+  function runMatch() {
+    var q = {}; ['name', 'father', 'dob', 'sex', 'phone', 'village'].forEach(function (k) { if (idq[k]) q[k] = idq[k]; });
+    idres = q.name ? X.registry.match(q) : null; idsel = idres && idres.candidates[0] ? idres.candidates[0].rec.id : null; idotp = null; idmsg = '';
+    idq.visitId = 'V-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+  }
+
   document.addEventListener('click', function (e) {
-    var t = e.target.getAttribute('data-tenant'); if (t) { cur = X.org(t); render(); return; }
-    var m = e.target.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); render(); return; }
+    var T = e.target, g = function (a) { var el = T.closest('[' + a + ']'); return el ? el.getAttribute(a) : null; };
+    var t = T.getAttribute('data-tenant'); if (t) { cur = X.org(t); render(); return; }
+    var m = T.closest('[data-mod]'); if (m) { mod = m.getAttribute('data-mod'); if (mod === 'compliance') mod = 'audit'; render(); return; }
+    var pk = g('data-pack'); if (pk) { X.selectPack(pk, { app: 'core', persona: cur.personas[0].id }); return; }
+    if (g('data-idrun') !== null) { readQuery(); idq.truth = null; runMatch(); render(); return; }
+    var ps = g('data-preset'); if (ps) {
+      var sc = X.registry.scenarios.filter(function (x) { return x.key === ps; })[0];
+      idq = { name: sc.q.name || '', father: sc.q.father || '', dob: sc.q.dob || '', sex: sc.q.sex || '', phone: sc.q.phone || '', village: sc.q.village || '', truth: sc.truth || null };
+      runMatch(); render(); return;
+    }
+    var cd = g('data-cand'); if (cd) { idsel = cd; render(); return; }
+    var ot = g('data-otp'); if (ot) { idotp = { rec: ot }; idsel = ot; idmsg = ''; render(); return; }
+    function visitRec() { var r = { id: idq.visitId, org: 'ORG-CLINIC', name: idq.name, sex: idq.sex, dob: idq.dob, dobPrec: String(idq.dob).length === 4 ? 'year' : idq.dob ? 'full' : '', father: idq.father, phone: idq.phone, village: idq.village }; if (idq.truth) r.truth = idq.truth; return r; }
+    function doLink(method) {
+      var c = idres.candidates.filter(function (x) { return x.rec.id === idotp.rec; })[0];
+      X.registry.link(idq.visitId, idotp.rec, method, c, cur.personas[0].id, visitRec());
+      X.access({ patientId: c.rec.patientId || null, flow: 'treatment', recipient: 'pulse', purpose: 'identity confirmed at the point of care' }, { app: 'core', persona: cur.personas[0].id });
+      var cl = X.registry.clusterOf(idotp.rec);
+      idmsg = 'Confirmed by ' + (method === 'patient-otp' ? 'the patient\'s one-time code' : 'a community health worker') + '. Visit record <span class="mono">' + esc(idq.visitId) + '</span> now resolves to person <span class="mono">' + esc(cl.id) + '</span> across ' + cl.records.length + ' records.';
+      idotp = null; UI.toast('Identity confirmed', 'Visit record linked to ' + cl.id + '.');
+    }
+    if (g('data-otpconfirm') !== null) { var code = val('otp-in'); if (X.registry.verifyCode(idotp.rec, code)) { doLink('patient-otp'); } else { idmsg = 'That code does not match. Nothing was linked.'; } render(); return; }
+    if (g('data-chw') !== null) { doLink('chw-assisted'); render(); return; }
+    if (g('data-idreject') !== null) { X.registry.reject(idq.visitId, idotp.rec, cur.personas[0].id); idmsg = 'Recorded: the patient does not recognise that record. It will not be suggested for this visit again.'; idotp = null; render(); return; }
+    var rq = g('data-rq'); if (rq) { var pr = rq.split('|'); if (pr[2] === 'link') { var xx = X.registry.reviewQueue().filter(function (z) { return z.a === pr[0] && z.b === pr[1]; })[0]; X.registry.link(pr[0], pr[1], 'human-review', xx, cur.personas[0].id); UI.toast('Linked', pr[0] + ' and ' + pr[1] + ' are one person.'); } else { X.registry.reject(pr[0], pr[1], cur.personas[0].id); UI.toast('Kept apart', pr[0] + ' and ' + pr[1] + ' are different people.'); } return; }
+    var ul = g('data-unlink'); if (ul) { var up = ul.split('|'); X.registry.unlink(up[0], up[1], cur.personas[0].id); UI.toast('Unlinked', 'The records are separate again. Nothing was lost.'); return; }
+    if (g('data-applyauto') !== null) { var n = X.registry.applyAuto(cur.personas[0].id); UI.toast('Linked', n + ' strong matches linked.'); return; }
+    if (g('data-test') !== null) {
+      tform.flow = val('t-flow'); tform.recipient = val('t-rec'); tform.emergency = val('t-emerg') === '1';
+      tres = X.access({ patientId: X.PATIENT.id, flow: tform.flow, recipient: tform.recipient, scope: tform.flow === 'delegated' ? 'view-meds' : null, emergency: tform.emergency, purpose: 'policy test in Core' }, { app: 'core', persona: cur.personas[0].id });
+      render(); return;
+    }
+    if (g('data-tamper') !== null) {
+      var copy = JSON.parse(JSON.stringify(X.events())).filter(function (x) { return x.hash; });
+      if (copy.length < 2) { tamper = 'Not enough hashed events yet. Act in another app first, then run the test.'; }
+      else { var k = Math.floor(copy.length / 2); copy[k].payload = Object.assign({}, copy[k].payload, { tampered: true }); var r = X.verify(copy); tamper = r.ok ? 'The change was not detected.' : 'Detected: an event of type ' + r.broken.type + ' ' + r.broken.reason + '. This was a test on a copy; the real log is untouched.'; }
+      render(); return;
+    }
+    var fh = g('data-fhir'); if (fh) { fhirSel = fh; render(); return; }
+    if (g('data-download') !== null) { try { var blob = new Blob([JSON.stringify(X.fhir.bundle(), null, 2)], { type: 'application/fhir+json' }); var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'qare-bundle.json'; a.click(); } catch (er) {} return; }
     if (e.target.matches('[data-gic-publish]')) {
-      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Exchange uptime and integrity, Q current', status: 'Verified' }, { app: 'core', persona: cur.personas[0].id });
+      X.append('GIC_PUBLISHED', { orgId: cur.id, orgName: cur.name, outcome: 'Exchange log integrity and identity safety, Q current', status: 'Verified' }, { app: 'core', persona: cur.personas[0].id });
       UI.toast('Published to GIC', cur.name + ' posted a verified record to the Commons.');
     }
   });
 
-  X.subscribe(function (ev) { if (ev) lastId = ev.id; render(); });
+  // Keep what the operator is typing: re-render once they leave the field.
+  X.subscribe(function (ev) {
+    if (ev) lastId = ev.id;
+    var ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT')) { pendingRender = true; return; }
+    render();
+  });
+  document.addEventListener('focusout', function () { if (pendingRender) { pendingRender = false; setTimeout(render, 0); } });
+  X.registry.stats();
   render();
 })();
 </script>

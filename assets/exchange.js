@@ -1,5 +1,5 @@
 /*
- * Qäre HIE — the shared exchange that makes the twelve apps one system.
+ * Qäre HIE: the shared exchange that makes the twelve apps one system.
  *
  * Every app loads this file. It holds the seeded world and an append-only event
  * log, persisted to localStorage and synced across browser tabs over a
@@ -191,6 +191,18 @@
     notify(ev);
   }
 
+
+  // Non-cryptographic 53-bit hash (cyrb53). Enough to make tampering detectable
+  // in the demo; production would use SHA-256.
+  function h53(str, seed) {
+    var h1 = 0xdeadbeef ^ (seed || 0), h2 = 0x41c6ce57 ^ (seed || 0);
+    for (var i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return ('0000000000000' + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16)).slice(-14);
+  }
+  function eventHash(prevHash, ev) { return h53(prevHash + '|' + ev.id + '|' + ev.ts + '|' + ev.type + '|' + JSON.stringify(ev.actor) + '|' + JSON.stringify(ev.payload)); }
+
   /* ---------- Public API ---------- */
 
   var Exchange = {
@@ -206,6 +218,26 @@
     drug: function (code) { return FORMULARY.filter(function (d) { return d.code === code; })[0] || null; },
     labTest: function (code) { return LAB_TESTS.filter(function (t) { return t.code === code; })[0] || null; },
 
+    hash53: h53,
+
+    // Tamper check. Each event carries the hash of its predecessor, so a changed
+    // payload or a removed event is detectable. Events from before hashing was
+    // added are counted as legacy and skipped. Pass a list to test a copy.
+    verify: function (list) {
+      list = list || cache;
+      var byId = {}, checked = 0, legacy = 0, broken = null;
+      list.forEach(function (e) { byId[e.id] = e; });
+      for (var i = 0; i < list.length; i++) {
+        var e = list[i];
+        if (!e.hash) { legacy++; continue; }
+        var prevHash = '';
+        if (e.prev) { if (!byId[e.prev]) { broken = { id: e.id, type: e.type, reason: 'predecessor missing, an event was removed' }; break; } prevHash = byId[e.prev].hash || ''; }
+        if (eventHash(prevHash, e) !== e.hash) { broken = { id: e.id, type: e.type, reason: 'content changed after it was written' }; break; }
+        checked++;
+      }
+      return { ok: !broken, checked: checked, legacy: legacy, broken: broken };
+    },
+
     events: function () { return cache.slice(); },
     eventsOfType: function (type) { return cache.filter(function (e) { return e.type === type; }); },
 
@@ -214,6 +246,9 @@
         id: String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8),
         ts: Date.now(), type: type, actor: actor || null, payload: payload || {}
       };
+      var last = cache.length ? cache[cache.length - 1] : null;
+      ev.prev = last ? last.id : null;
+      ev.hash = eventHash(last && last.hash ? last.hash : '', ev);
       cache.push(ev);
       save();
       if (channel) { try { channel.postMessage({ kind: 'event', event: ev }); } catch (e) {} }
